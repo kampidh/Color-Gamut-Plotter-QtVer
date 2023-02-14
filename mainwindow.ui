@@ -119,6 +119,11 @@
             <string>High (Slow)</string>
            </property>
           </item>
+          <item>
+           <property name="text">
+            <string>Ultra (Slowest, only for 3D Mono and 2D)</string>
+           </property>
+          </item>
          </widget>
         </item>
        </layout>

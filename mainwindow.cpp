@@ -78,31 +78,51 @@ void MainWindow::goPlot()
     }
 
     const int plotTypeIndex = plotTypeCmb->currentIndex();
+    const int plotDensNdx = plotDensCmb->currentIndex();
     const int plotDensity = [&]() {
         switch (plotTypeIndex) {
         // 3D Mono
         case 0:
-            if (plotDensCmb->currentIndex() == 0) {
+            switch (plotDensNdx) {
+            case 0:
                 return 200;
-            } else {
+                break;
+            case 1:
+//            default:
                 return 500;
+                break;
+            case 2:
+            default:
+                return 1000;
+                break;
             }
             break;
         // 3D Color
         case 1:
-            if (plotDensCmb->currentIndex() == 0) {
+            switch (plotDensNdx) {
+            case 0:
                 return 50;
-            } else {
+                break;
+            case 1:
+            default:
                 return 100;
+                break;
             }
             break;
         // 2D
         case 2:
         default:
-            if (plotDensCmb->currentIndex() == 0) {
+            switch (plotDensNdx) {
+            case 0:
                 return 200;
-            } else {
+                break;
+            case 1:
                 return 1500;
+                break;
+            case 2:
+            default:
+                return 5000;
+                break;
             }
             break;
         }

@@ -84,6 +84,18 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
     d->m_dArray = dArray;
     d->m_dColor = dColor;
     d->m_particleSize = size;
+
+    const double alphaToLerp =
+        std::min(std::max(1.0 - (d->m_dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
+
+    const double alphaLerpToGamma = 0.1 + ((1.0 - 0.1) * std::pow(alphaToLerp, 5.5));
+
+    for (int i = 0; i < d->m_dArray.size(); i++) {
+        d->m_dColor[i].setAlphaF(alphaLerpToGamma);
+    }
+
+//        qDebug() << "ImagePixelsSize: " << d->m_dArray.size();
+//        qDebug() << "Alpha: " << alphaLerpToGamma;
 }
 
 void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint)
@@ -110,10 +122,7 @@ void Scatter2dChart::drawDataPoints()
     d->m_painter.setPen(Qt::transparent);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-    const double alpha = std::min(std::max(50000.0 / d->m_dArray.size(), 0.075), 1.0);
-
     for (int i = 0; i < d->m_dArray.size(); i++) {
-        d->m_dColor[i].setAlphaF(alpha);
         d->m_painter.setBrush(d->m_dColor[i]);
 
         QPoint map = mapPoint(QPointF(d->m_dArray[i].x(), d->m_dArray[i].y()));
