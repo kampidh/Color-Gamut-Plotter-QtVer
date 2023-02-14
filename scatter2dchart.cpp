@@ -323,7 +323,7 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
 void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        //        qDebug() << "pos" << event->pos();
+        // qDebug() << "pos" << event->pos();
         d->m_lastPos = event->pos();
     }
 }

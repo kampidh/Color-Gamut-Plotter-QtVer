@@ -21,8 +21,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 LIST (APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets DataVisualization Charts)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets DataVisualization Charts)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
 
 include(FeatureSummary)
 
@@ -67,6 +67,7 @@ endif()
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::DataVisualization)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Charts)
+target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Concurrent)
 
 set_target_properties(gamutplotter PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

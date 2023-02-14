@@ -14,6 +14,9 @@
 #include <QImage>
 #include <QProgressDialog>
 
+#include <QFuture>
+#include <QtConcurrent>
+
 #include <algorithm>
 #include <cmath>
 
@@ -82,55 +85,60 @@ ImageParserSC::ImageParserSC(const QImage &imgIn, int size)
 
     const uint32_t imgSZ = img.width() * img.height();
 
-    QProgressDialog *pDial = new QProgressDialog();
-    pDial->setMinimum(0);
-    pDial->setMaximum(imgSZ);
-    pDial->setLabelText("Converting image to data points...");
-    pDial->setCancelButtonText("Stop");
-
-    pDial->show();
-
-    uint32_t progress = 0;
-    uint32_t pDivider = imgSZ / 50;
+    QVector<QVector3D> imgData;
 
     for (int i = 0; i < img.width(); i++) {
         for (int j = 0; j < img.height(); j++) {
-            const double pix[3] = {img.pixelColor(i, j).redF(),
-                                   img.pixelColor(i, j).greenF(),
-                                   img.pixelColor(i, j).blueF()};
-            cmsCIEXYZ bufXYZ;
-            cmsCIExyY bufxyY;
-
-            cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
-            cmsXYZ2xyY(&bufxyY, &bufXYZ);
-            d->m_outxyY.append(bufxyY);
-
-            double pixOut[3];
-            QColor bufout;
-
-            cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
-            bufout.setRedF(pixOut[0]);
-            bufout.setGreenF(pixOut[1]);
-            bufout.setBlueF(pixOut[2]);
-            d->m_outQC.append(bufout);
-
-            // Using pixelColor directly works faster, but it
-            // doesn't always returned an accurate colors, especially
-            // on wider gamut profiles.
-            //
-            // d->m_outQC.append(img.pixelColor(i, j));
-
-            progress++;
-            if (progress % pDivider == 0) {
-                pDial->setValue(progress);
-                if (pDial->wasCanceled()) {
-                    break;
-                }
-                QApplication::processEvents();
-            }
+            imgData.append({static_cast<float>(img.pixelColor(i, j).redF()),
+                            static_cast<float>(img.pixelColor(i, j).greenF()),
+                            static_cast<float>(img.pixelColor(i, j).blueF())});
         }
     }
-    pDial->setValue(progress);
+
+    std::function<QPair<cmsCIExyY, QColor>(const QVector3D&)> convertXYYQC = [&](const QVector3D &input) {
+        const double pix[3] = {input.x(),
+                               input.y(),
+                               input.z()};
+
+        cmsCIEXYZ bufXYZ;
+        cmsCIExyY bufxyY;
+
+        cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
+        cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+        double pixOut[3];
+        QColor bufout;
+
+        cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
+        bufout.setRedF(pixOut[0]);
+        bufout.setGreenF(pixOut[1]);
+        bufout.setBlueF(pixOut[2]);
+
+        return QPair<cmsCIExyY, QColor>(bufxyY, bufout);
+    };
+
+    QFutureWatcher<QPair<cmsCIExyY, QColor>> futureTmp;
+
+    QProgressDialog pDial;
+    pDial.setMinimum(0);
+    pDial.setMaximum(imgSZ);
+    pDial.setLabelText("Converting image to data points...");
+    pDial.setCancelButtonText("Stop");
+
+    QObject::connect(&futureTmp, &QFutureWatcher<void>::finished, &pDial, &QProgressDialog::reset);
+    QObject::connect(&pDial, &QProgressDialog::canceled, &futureTmp, &QFutureWatcher<void>::cancel);
+    QObject::connect(&futureTmp,  &QFutureWatcher<void>::progressRangeChanged, &pDial, &QProgressDialog::setRange);
+    QObject::connect(&futureTmp, &QFutureWatcher<void>::progressValueChanged,  &pDial, &QProgressDialog::setValue);
+
+    futureTmp.setFuture(QtConcurrent::mapped(imgData, convertXYYQC));
+
+    pDial.exec();
+    futureTmp.waitForFinished();
+
+    for (int i = 0; i < imgData.size(); i++) {
+        d->m_outxyY.append(futureTmp.resultAt(i).first);
+        d->m_outQC.append(futureTmp.resultAt(i).second);
+    }
 
     const cmsCIExyY profileWtpt = [&]() {
         const double white[3] = {1.0, 1.0, 1.0};
