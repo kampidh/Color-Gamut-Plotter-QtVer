@@ -49,8 +49,10 @@ private:
     void drawSrgbTriangle();
     void drawGamutTriangleWP();
     void drawGrids();
+    void drawLabels();
     void doUpdate();
     void whenScrollTimerEnds();
+    void drawDownscaled(int delayms);
     QPoint mapPoint(QPointF xy);
 
     class Private;

@@ -92,17 +92,14 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
     d->m_particleSize = size;
     d->m_particleSizeStored = size;
 
+    // set alpha based on numpoints
     const double alphaToLerp =
         std::min(std::max(1.0 - (d->m_dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
-
     const double alphaLerpToGamma = 0.1 + ((1.0 - 0.1) * std::pow(alphaToLerp, 5.5));
 
     for (int i = 0; i < d->m_dArray.size(); i++) {
         d->m_dColor[i].setAlphaF(alphaLerpToGamma);
     }
-
-//        qDebug() << "ImagePixelsSize: " << d->m_dArray.size();
-//        qDebug() << "Alpha: " << alphaLerpToGamma;
 }
 
 void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint)
@@ -283,6 +280,18 @@ void Scatter2dChart::drawGrids()
     d->m_painter.restore();
 }
 
+void Scatter2dChart::drawLabels()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setPen(QPen(Qt::gray));
+    d->m_painter.setFont(QFont("Courier", 12, QFont::Medium));
+    const QString zoomLvl = "Zoom: " + QString::number(d->m_zoomRatio * 100.0, 'f', 2) + "%";
+    d->m_painter.drawText(rect(), Qt::AlignBottom | Qt::AlignRight, zoomLvl);
+
+    d->m_painter.restore();
+}
+
 void Scatter2dChart::doUpdate()
 {
     d->needUpdatePixmap = false;
@@ -297,6 +306,7 @@ void Scatter2dChart::doUpdate()
     drawDataPoints();
     drawSrgbTriangle();
     drawGamutTriangleWP();
+    drawLabels();
 
     d->m_painter.end();
 }
@@ -315,43 +325,39 @@ void Scatter2dChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     // downscale
-    d->m_scrollTimer->start(1000);
-    if (d->m_dArray.size() > 2000000) {
-        d->m_dArrayIterSize = 100;
-    } else if (d->m_dArray.size() > 500000) {
-        d->m_dArrayIterSize = 50;
-    } else {
-        d->m_dArrayIterSize = 10;
-    }
-    d->m_particleSize = 4;
+    drawDownscaled(1000);
     d->needUpdatePixmap = true;
 }
 
 void Scatter2dChart::wheelEvent(QWheelEvent *event)
 {
-    QPoint numPixels = event->pixelDelta();
-    QPoint numDegrees = event->angleDelta();
+    const QPoint numDegrees = event->angleDelta();
 
-    const double zoomIncrement = numDegrees.y() / 500.0;
+    // exponential zooming, so that it will feel linear especially
+    // on high zooom rate
+    const double zoomIncrement = (numDegrees.y() / 1200.0) * d->m_zoomRatio;
 
     event->accept();
-    // Zoom out cap
-    if (d->m_zoomRatio + zoomIncrement > 0.8) {
-        // downscale
-        d->m_scrollTimer->start(1000);
-        if (d->m_dArray.size() > 2000000) {
-            d->m_dArrayIterSize = 100;
-        } else if (d->m_dArray.size() > 500000) {
-            d->m_dArrayIterSize = 50;
-        } else {
-            d->m_dArrayIterSize = 10;
-        }
-        d->m_particleSize = 4;
+
+    // Zoom cap (around 80% - 20000%)
+    if (d->m_zoomRatio + zoomIncrement > 0.8 && d->m_zoomRatio + zoomIncrement < 200.0) {
+        drawDownscaled(1000);
+
+        // window screen space -> absolute space for a smoother zooming at cursor point
+        // I probably reinventing the wheel here but well...
+        const float windowAspectRatio = width() * 1.0 / height() * 1.0;
+        const QPointF scenepos = QPointF((event->position().x() / (width() / devicePixelRatioF()) * windowAspectRatio),
+                                         1.0 - (event->position().y() / (height() / devicePixelRatioF())));
+        const int windowUnit = height() / devicePixelRatioF();
+        const float windowsAbsUnit = windowUnit * d->m_zoomRatio;
+        const QPointF windowSceneCurScaledPos = scenepos / d->m_zoomRatio;
+        const QPointF windowSceneCurAbsPos =
+            windowSceneCurScaledPos - QPointF(d->m_offsetX / windowsAbsUnit, d->m_offsetY / windowsAbsUnit);
 
         d->m_zoomRatio += zoomIncrement;
 
-        d->m_offsetX -= static_cast<int>(zoomIncrement * ((width() / devicePixelRatioF()) / 3.17));
-        d->m_offsetY -= static_cast<int>(zoomIncrement * ((height() / devicePixelRatioF()) / 3.05));
+        d->m_offsetX -= static_cast<int>(zoomIncrement * (windowSceneCurAbsPos.x() * windowUnit));
+        d->m_offsetY -= static_cast<int>(zoomIncrement * (windowSceneCurAbsPos.y() * windowUnit));
 
         d->needUpdatePixmap = true;
         update();
@@ -368,16 +374,7 @@ void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 {
     if (event->buttons() & Qt::LeftButton) {
-        // downscale
-        d->m_scrollTimer->start(1000);
-        if (d->m_dArray.size() > 2000000) {
-            d->m_dArrayIterSize = 100;
-        } else if (d->m_dArray.size() > 500000) {
-            d->m_dArrayIterSize = 50;
-        } else {
-            d->m_dArrayIterSize = 10;
-        }
-        d->m_particleSize = 4;
+        drawDownscaled(1000);
 
         QPoint delposs;
         delposs = event->pos() - d->m_lastPos;
@@ -393,17 +390,7 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 
 void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
-//    if (event->button() == Qt::LeftButton) {
-        // replaced with whenScrollTimerEnds
-        //
-        // render at full again
-//        d->m_dArrayIterSize = 1;
-//        d->m_particleSize = d->m_particleSizeStored;
-//        d->needUpdatePixmap = true;
-//        if (!d->m_scrollTimer->isActive()){
-//            update();
-//        }
-//    }
+    // reserved
 }
 
 void Scatter2dChart::whenScrollTimerEnds()
@@ -415,10 +402,10 @@ void Scatter2dChart::whenScrollTimerEnds()
     update();
 }
 
-void Scatter2dChart::resetCamera()
+void Scatter2dChart::drawDownscaled(int delayms)
 {
     // downscale
-    d->m_scrollTimer->start(1000);
+    d->m_scrollTimer->start(delayms);
     if (d->m_dArray.size() > 2000000) {
         d->m_dArrayIterSize = 100;
     } else if (d->m_dArray.size() > 500000) {
@@ -427,6 +414,11 @@ void Scatter2dChart::resetCamera()
         d->m_dArrayIterSize = 10;
     }
     d->m_particleSize = 4;
+}
+
+void Scatter2dChart::resetCamera()
+{
+    drawDownscaled(1000);
 
     d->m_zoomRatio = 1.1;
     d->m_offsetX = 100;
