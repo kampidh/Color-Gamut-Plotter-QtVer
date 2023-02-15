@@ -60,17 +60,23 @@ public:
     QVector2D m_dWhitePoint;
     QVector<QColor> m_dColor;
     int m_particleSize;
+    int m_particleSizeStored;
     double m_zoomRatio{1.1};
     int m_offsetX{100};
     int m_offsetY{50};
     QPoint m_lastPos{};
+    int m_dArrayIterSize = 1;
+    QTimer *m_scrollTimer;
 };
 
 Scatter2dChart::Scatter2dChart(QWidget *parent)
     : QWidget{parent}
     , d(new Private)
 {
-    //    setMinimumSize(1000, 1000);
+    // prepare timer for downscaling
+    d->m_scrollTimer = new QTimer(this);
+    d->m_scrollTimer->setSingleShot(true);
+    connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -84,6 +90,7 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
     d->m_dArray = dArray;
     d->m_dColor = dColor;
     d->m_particleSize = size;
+    d->m_particleSizeStored = size;
 
     const double alphaToLerp =
         std::min(std::max(1.0 - (d->m_dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
@@ -122,7 +129,7 @@ void Scatter2dChart::drawDataPoints()
     d->m_painter.setPen(Qt::transparent);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-    for (int i = 0; i < d->m_dArray.size(); i++) {
+    for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
         d->m_painter.setBrush(d->m_dColor[i]);
 
         QPoint map = mapPoint(QPointF(d->m_dArray[i].x(), d->m_dArray[i].y()));
@@ -307,11 +314,32 @@ void Scatter2dChart::paintEvent(QPaintEvent *)
 void Scatter2dChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    // downscale
+    d->m_scrollTimer->start(1000);
+    if (d->m_dArray.size() > 2000000) {
+        d->m_dArrayIterSize = 100;
+    } else if (d->m_dArray.size() > 500000) {
+        d->m_dArrayIterSize = 50;
+    } else {
+        d->m_dArrayIterSize = 10;
+    }
+    d->m_particleSize = 4;
     d->needUpdatePixmap = true;
 }
 
 void Scatter2dChart::wheelEvent(QWheelEvent *event)
 {
+    // downscale
+    d->m_scrollTimer->start(1000);
+    if (d->m_dArray.size() > 2000000) {
+        d->m_dArrayIterSize = 100;
+    } else if (d->m_dArray.size() > 500000) {
+        d->m_dArrayIterSize = 50;
+    } else {
+        d->m_dArrayIterSize = 10;
+    }
+    d->m_particleSize = 4;
+
     QPoint numPixels = event->pixelDelta();
     QPoint numDegrees = event->angleDelta();
 
@@ -332,7 +360,6 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
 void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        // qDebug() << "pos" << event->pos();
         d->m_lastPos = event->pos();
     }
 }
@@ -340,6 +367,17 @@ void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 {
     if (event->buttons() & Qt::LeftButton) {
+        // downscale
+        d->m_scrollTimer->start(1000);
+        if (d->m_dArray.size() > 2000000) {
+            d->m_dArrayIterSize = 100;
+        } else if (d->m_dArray.size() > 500000) {
+            d->m_dArrayIterSize = 50;
+        } else {
+            d->m_dArrayIterSize = 10;
+        }
+        d->m_particleSize = 4;
+
         QPoint delposs;
         delposs = event->pos() - d->m_lastPos;
         d->m_lastPos = event->pos();
@@ -350,6 +388,30 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
         d->needUpdatePixmap = true;
         update();
     }
+}
+
+void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
+{
+//    if (event->button() == Qt::LeftButton) {
+        // replaced with whenScrollTimerEnds
+        //
+        // render at full again
+//        d->m_dArrayIterSize = 1;
+//        d->m_particleSize = d->m_particleSizeStored;
+//        d->needUpdatePixmap = true;
+//        if (!d->m_scrollTimer->isActive()){
+//            update();
+//        }
+//    }
+}
+
+void Scatter2dChart::whenScrollTimerEnds()
+{
+    // render at full again
+    d->m_dArrayIterSize = 1;
+    d->m_particleSize = d->m_particleSizeStored;
+    d->needUpdatePixmap = true;
+    update();
 }
 
 void Scatter2dChart::resetCamera()

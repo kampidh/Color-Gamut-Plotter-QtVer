@@ -41,6 +41,7 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
     void drawDataPoints();
@@ -49,6 +50,7 @@ private:
     void drawGamutTriangleWP();
     void drawGrids();
     void doUpdate();
+    void whenScrollTimerEnds();
     QPoint mapPoint(QPointF xy);
 
     class Private;
