@@ -123,7 +123,7 @@ QPoint Scatter2dChart::mapPoint(QPointF xy)
 void Scatter2dChart::drawDataPoints()
 {
     d->m_painter.save();
-    if (d->m_dArray.size() < 500000) {
+    if (d->m_dArray.size() < 500000 && d->m_dArrayIterSize == 1) {
         d->m_painter.setRenderHint(QPainter::Antialiasing);
     }
     d->m_painter.setPen(Qt::transparent);
@@ -329,17 +329,6 @@ void Scatter2dChart::resizeEvent(QResizeEvent *event)
 
 void Scatter2dChart::wheelEvent(QWheelEvent *event)
 {
-    // downscale
-    d->m_scrollTimer->start(1000);
-    if (d->m_dArray.size() > 2000000) {
-        d->m_dArrayIterSize = 100;
-    } else if (d->m_dArray.size() > 500000) {
-        d->m_dArrayIterSize = 50;
-    } else {
-        d->m_dArrayIterSize = 10;
-    }
-    d->m_particleSize = 4;
-
     QPoint numPixels = event->pixelDelta();
     QPoint numDegrees = event->angleDelta();
 
@@ -348,13 +337,25 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
     event->accept();
     // Zoom out cap
     if (d->m_zoomRatio + zoomIncrement > 0.8) {
+        // downscale
+        d->m_scrollTimer->start(1000);
+        if (d->m_dArray.size() > 2000000) {
+            d->m_dArrayIterSize = 100;
+        } else if (d->m_dArray.size() > 500000) {
+            d->m_dArrayIterSize = 50;
+        } else {
+            d->m_dArrayIterSize = 10;
+        }
+        d->m_particleSize = 4;
+
         d->m_zoomRatio += zoomIncrement;
 
         d->m_offsetX -= static_cast<int>(zoomIncrement * ((width() / devicePixelRatioF()) / 3.17));
         d->m_offsetY -= static_cast<int>(zoomIncrement * ((height() / devicePixelRatioF()) / 3.05));
+
+        d->needUpdatePixmap = true;
+        update();
     }
-    d->needUpdatePixmap = true;
-    update();
 }
 
 void Scatter2dChart::mousePressEvent(QMouseEvent *event)
@@ -416,6 +417,17 @@ void Scatter2dChart::whenScrollTimerEnds()
 
 void Scatter2dChart::resetCamera()
 {
+    // downscale
+    d->m_scrollTimer->start(1000);
+    if (d->m_dArray.size() > 2000000) {
+        d->m_dArrayIterSize = 100;
+    } else if (d->m_dArray.size() > 500000) {
+        d->m_dArrayIterSize = 50;
+    } else {
+        d->m_dArrayIterSize = 10;
+    }
+    d->m_particleSize = 4;
+
     d->m_zoomRatio = 1.1;
     d->m_offsetX = 100;
     d->m_offsetY = 50;
