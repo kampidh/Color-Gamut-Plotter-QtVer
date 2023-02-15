@@ -206,7 +206,7 @@ void Scatter2dChart::drawGamutTriangleWP()
     pn.setWidth(1);
     d->m_painter.setPen(pn);
 
-    d->m_painter.setBrush(Qt::transparent);
+    d->m_painter.setBrush(QColor(128, 0, 0, 96));
 
     const int pointSize = 3;
 
