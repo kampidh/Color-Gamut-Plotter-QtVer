@@ -14,20 +14,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  **/
 
-#include <QFile>
-#include <QImage>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPointF>
 #include <QTimer>
 #include <QVector3D>
 #include <cmath>
 
-#include <QOpenGLPaintDevice>
-
 #include <QDebug>
-//#include <lcms2.h>
 
 #include "scatter2dchart.h"
 

@@ -19,9 +19,6 @@
 
 #include <QVector3D>
 #include <QWidget>
-#include <QOpenGLWidget>
-#include <QOpenGLFunctions>
-//#include <lcms2.h>
 
 class Scatter2dChart : public QWidget
 {
