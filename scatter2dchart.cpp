@@ -127,9 +127,13 @@ void Scatter2dChart::drawDataPoints()
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
-        d->m_painter.setBrush(d->m_dColor[i]);
+        if (d->m_dArrayIterSize > 1) {
+            d->m_painter.setBrush(QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
+        } else {
+            d->m_painter.setBrush(d->m_dColor.at(i));
+        }
 
-        QPoint map = mapPoint(QPointF(d->m_dArray[i].x(), d->m_dArray[i].y()));
+        const QPoint map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
 
         d->m_painter.drawEllipse(map.x() - (d->m_particleSize / 2),
                                  map.y() - (d->m_particleSize / 2),
@@ -154,7 +158,7 @@ void Scatter2dChart::drawSpectralLine()
 
     for (int x = 380; x <= 700; x += 5) {
         int ix = (x - 380) / 5;
-        QPoint map = mapPoint(QPointF(spectral_chromaticity[ix][0], spectral_chromaticity[ix][1]));
+        const QPoint map = mapPoint(QPointF(spectral_chromaticity[ix][0], spectral_chromaticity[ix][1]));
 
         if (x > 380) {
             d->m_painter.drawLine(mapB, map);
@@ -208,13 +212,12 @@ void Scatter2dChart::drawGamutTriangleWP()
     const int pointSize = 3;
 
     for (int i = 0; i < d->m_dOutGamut.size(); i++) {
-        QPointF ixy{d->m_dOutGamut[i].x(), d->m_dOutGamut[i].y()};
-        QPoint map = mapPoint(ixy);
+        const QPoint map = mapPoint(QPointF(d->m_dOutGamut.at(i).x(), d->m_dOutGamut.at(i).y()));
 
         d->m_painter.drawEllipse(map.x() - (pointSize / 2), map.y() - (pointSize / 2), pointSize, pointSize);
     }
 
-    QPoint mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
+    const QPoint mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
     d->m_painter.setBrush(Qt::white);
     d->m_painter.drawEllipse(mapW.x() - (4 / 2), mapW.y() - (4 / 2), 4, 4);
 
@@ -376,8 +379,7 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
     if (event->buttons() & Qt::LeftButton) {
         drawDownscaled(1000);
 
-        QPoint delposs;
-        delposs = event->pos() - d->m_lastPos;
+        const QPoint delposs(event->pos() - d->m_lastPos);
         d->m_lastPos = event->pos();
 
         d->m_offsetX += delposs.x();
