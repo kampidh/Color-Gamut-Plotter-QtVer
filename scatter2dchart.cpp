@@ -198,18 +198,20 @@ void Scatter2dChart::drawGamutTriangleWP()
 
     QPen pn;
     pn.setColor(QColor(128, 0, 0, 128));
-    pn.setWidth(1);
+    pn.setWidth(2);
     d->m_painter.setPen(pn);
 
-    d->m_painter.setBrush(QColor(128, 0, 0, 96));
+    d->m_painter.setBrush(Qt::transparent);
 
     const int pointSize = 3;
 
-    for (int i = 0; i < d->m_dOutGamut.size(); i++) {
-        const QPoint map = mapPoint(QPointF(d->m_dOutGamut.at(i).x(), d->m_dOutGamut.at(i).y()));
+    QPolygonF gamutPoly;
 
-        d->m_painter.drawEllipse(map.x() - (pointSize / 2), map.y() - (pointSize / 2), pointSize, pointSize);
+    for (int i = 0; i < d->m_dOutGamut.size(); i++) {
+        gamutPoly << mapPoint(QPointF(d->m_dOutGamut.at(i).x(), d->m_dOutGamut.at(i).y()));
     }
+
+    d->m_painter.drawPolygon(gamutPoly);
 
     const QPoint mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
     d->m_painter.setBrush(Qt::white);

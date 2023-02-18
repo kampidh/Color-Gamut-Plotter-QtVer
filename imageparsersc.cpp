@@ -150,13 +150,28 @@ ImageParserSC::ImageParserSC(const QImage &imgIn, int size)
     }();
     d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
-    for (int i = 0; i < 256; i++) {
-        const QVector<QColor> gmt = {QColor(i, 255 - i, 0), QColor(0, i, 255 - i), QColor(255 - i, 0, i)};
-        for (auto &clr : gmt) {
+    const int sampleNum = 100;
+    for (int i = 0; i < 3; i++){
+        for (int j = 0; j < sampleNum; j++) {
+            const double red = [&](){
+                if (i == 0) return static_cast<double>(sampleNum-j) / sampleNum;
+                if (i == 2) return static_cast<double>(j) / sampleNum;
+                return 0.0;
+            }();
+            const double green = [&](){
+                if (i == 1) return static_cast<double>(sampleNum-j) / sampleNum;
+                if (i == 0) return static_cast<double>(j) / sampleNum;
+                return 0.0;
+            }();
+            const double blue = [&](){
+                if (i == 2) return static_cast<double>(sampleNum-j) / sampleNum;
+                if (i == 1) return static_cast<double>(j) / sampleNum;
+                return 0.0;
+            }();
+            const double rgb[3] = {red, green, blue};
             cmsCIEXYZ bufXYZ;
             cmsCIExyY bufxyY;
-            const double pix[3] = {clr.redF(), clr.greenF(), clr.blueF()};
-            cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
+            cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
             cmsXYZ2xyY(&bufxyY, &bufXYZ);
             d->m_outerGamut.append(bufxyY);
         }
