@@ -26,5 +26,8 @@ private:
     void dragEnterEvent(QDragEnterEvent *event);
     void dragMoveEvent(QDragMoveEvent *event);
     void dropEvent(QDropEvent *event);
+
+    class Private;
+    Private *const d{nullptr};
 };
 #endif // MAINWINDOW_H

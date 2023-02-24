@@ -17,11 +17,11 @@
 #include <QApplication>
 #include <QColorSpace>
 #include <QImage>
-#include <QScreen>
-#include <QProgressDialog>
-#include <QWidget>
-#include <QVBoxLayout>
 #include <QLabel>
+#include <QProgressDialog>
+#include <QScreen>
+#include <QVBoxLayout>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>
@@ -58,8 +58,7 @@ Scatter3dChart::Scatter3dChart(const QSurfaceFormat *format, QWindow *parent)
     : Q3DScatter{format, parent}
     , d(new Private)
 {
-
-//    d->m_graph = m_graph;
+    //    d->m_graph = m_graph;
     activeTheme()->setType(Q3DTheme::ThemeEbony);
     QFont font = activeTheme()->font();
     font.setPointSize(12.0f);
@@ -120,7 +119,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
 
     pDial->show();
 
-         // Input main data
+    // Input main data
     {
         // No need to call data proxy I guess..
         // QScatterDataProxy *proxy = new QScatterDataProxy;
@@ -155,7 +154,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
         pDial->setValue(progress);
     }
 
-         // Draw sRGB gamut triangle
+    // Draw sRGB gamut triangle
     if (!isSrgb) {
         QScatter3DSeries *series = new QScatter3DSeries();
         series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
@@ -169,7 +168,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
         addSeries(series);
     }
 
-         // Draw current profile gamut triangle
+    // Draw current profile gamut triangle
     {
         QScatter3DSeries *series = new QScatter3DSeries();
         series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
@@ -183,7 +182,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
         addSeries(series);
     }
 
-         // Draw tongue gamut
+    // Draw tongue gamut
     {
         QScatter3DSeries *series = new QScatter3DSeries();
         series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
@@ -231,7 +230,7 @@ void Scatter3dChart::inputRGBDataVec(QVector3D &xyy, QColor col, float size, boo
 
     QScatterDataItem item;
 
-         // Don't plot if NaN exists
+    // Don't plot if NaN exists
     if (xyy.x() != xyy.x() || xyy.y() != xyy.y() || xyy.z() != xyy.z()) {
         delete series;
         return;
@@ -254,7 +253,7 @@ void Scatter3dChart::inputMonoDataVec(QVector3D &xyy, QScatter3DSeries *series, 
 {
     QScatterDataItem item;
 
-         // Don't plot if NaN exists
+    // Don't plot if NaN exists
     if (xyy.x() != xyy.x() || xyy.y() != xyy.y() || xyy.z() != xyy.z()) {
         return;
     }

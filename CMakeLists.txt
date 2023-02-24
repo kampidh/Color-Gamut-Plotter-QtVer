@@ -19,12 +19,16 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# only set for static Qt build
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+
 LIST (APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
 
 include(FeatureSummary)
+include(MacroBoolTo01)
 
 set(PROJECT_SOURCES
         main.cpp
@@ -39,7 +43,30 @@ set(PROJECT_SOURCES
         scatter2dchart.cpp
         imageparsersc.h
         imageparsersc.cpp
+#        jxlreader.h
+#        jxlreader.cpp
+        imageformats.h
 )
+
+# move 3rd party into separate project
+
+#add_subdirectory("3rdparty")
+#add_dependencies(gamutplotter ext_patch)
+#add_dependencies(gamutplotter ext_lcms2)
+#add_dependencies(gamutplotter ext_jpegxl)
+
+find_package(LCMS2 2.13 REQUIRED)
+find_package(JPEGXL 0.7.0)
+
+macro_bool_to_01(JPEGXL_FOUND HAVE_JPEGXL)
+
+if (JPEGXL_FOUND)
+    list(APPEND PROJECT_SOURCES
+        jxlreader.h
+        jxlreader.cpp)
+endif()
+
+configure_file(gamutplotterconfig.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/gamutplotterconfig.h)
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(gamutplotter
@@ -77,20 +104,17 @@ set_target_properties(gamutplotter PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
-message("CMAKE COMMAND:")
-message(${CMAKE_COMMAND})
-
 set(TOP_INST_DIR ${CMAKE_CURRENT_BINARY_DIR}/i)
 set(EXTPREFIX "${TOP_INST_DIR}")
 set(CMAKE_PREFIX_PATH "${EXTPREFIX}")
 
-add_subdirectory("3rdparty")
-
-add_dependencies(gamutplotter ext_lcms2)
-
-find_package(LCMS2 2.13)
 include_directories(${LCMS2_INCLUDE_DIRS})
 target_link_libraries(gamutplotter PRIVATE ${LCMS2_LIBRARIES})
+
+if(JPEGXL_FOUND)
+    include_directories(${JPEGXL_INCLUDE_DIRS})
+    target_link_libraries(gamutplotter PRIVATE ${JPEGXL_LIBRARIES})
+endif()
 
 install(TARGETS gamutplotter
     BUNDLE DESTINATION .
