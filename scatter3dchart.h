@@ -7,9 +7,9 @@
 #ifndef SCATTER3DCHART_H
 #define SCATTER3DCHART_H
 
-#include <QtDataVisualization/q3dscatter.h>
 #include <QVector3D>
 #include <QWidget>
+#include <QtDataVisualization/q3dscatter.h>
 
 #include <lcms2.h>
 
@@ -38,7 +38,7 @@ private:
     void inputMonoDataVec(QVector3D &xyy, QScatter3DSeries *series, bool flatten);
 
     class Private;
-    Private* const d {nullptr};
+    Private *const d{nullptr};
 };
 
 #endif // SCATTER3DCHART_H

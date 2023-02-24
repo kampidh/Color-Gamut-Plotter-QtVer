@@ -10,11 +10,10 @@ Color transformation handled with lcms2.<br>
 3D plotting handled with Qt Data Visualization.<br>
 2D plotting handled with custom QWidget inspired by Krita Tongue Widget.<br>
 
-lcms2 dependency borrowed from Krita.
+lcms2 and JPEG XL dependency borrowed from Krita.
 
 To build:
-- Open the project in Qt Creator
-- Build project after configuring it, at first only the 3rdparty will be build
-- There will be an error that lcms2 is not found
-- Rerun CMake again
-- Rebuild project to build the binaries
+- This branch have a different build steps than the main branch...
+- Build 3rdparty dependencies first and install it to the main build folder
+- Configure main project into main build folder where deps are installed
+- Build project
