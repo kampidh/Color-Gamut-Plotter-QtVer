@@ -424,11 +424,14 @@ void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 
 void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
 {
+    const int mouseXPos = event->pos().x();
+    const int mouseYPos = height() - event->pos().y();
+
     const double scaleRatio = height() / devicePixelRatioF();
-    const QString sizePos = QString("X: %1 | Y: %2 | %3\%")
-                                .arg(QString::number((d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0),
-                                     QString::number((d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0),
-                                     QString::number(d->m_zoomRatio * 100.0));
+    const QString sizePos = QString("Cursor: x: %1 | y: %2 | %3\%")
+                                .arg(QString::number(((d->m_offsetX - mouseXPos) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
+                                     QString::number(((d->m_offsetY - mouseYPos) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
+                                     QString::number(d->m_zoomRatio * 100.0, 'f', 2));
     QMenu menu(this);
     menu.addAction(sizePos);
     menu.addSeparator();
