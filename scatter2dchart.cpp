@@ -14,12 +14,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  **/
 
+#include <QAction>
+#include <QInputDialog>
+#include <QMenu>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QTimer>
 #include <QVector3D>
 #include <cmath>
+
+#include <QApplication>
+#include <QClipboard>
 
 #include <QDebug>
 
@@ -61,6 +67,13 @@ public:
     QPoint m_lastPos{};
     int m_dArrayIterSize = 1;
     QTimer *m_scrollTimer;
+
+    QAction *setZoom;
+    QAction *setOrigin;
+    QAction *copyOrigAndZoom;
+    QAction *pasteOrigAndZoom;
+
+    QClipboard *m_clipb;
 };
 
 Scatter2dChart::Scatter2dChart(QWidget *parent)
@@ -71,6 +84,20 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->m_scrollTimer = new QTimer(this);
     d->m_scrollTimer->setSingleShot(true);
     connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
+
+    d->m_clipb = QApplication::clipboard();
+
+    d->setZoom = new QAction("Set zoom...");
+    connect(d->setZoom, &QAction::triggered, this, &Scatter2dChart::changeZoom);
+
+    d->setOrigin = new QAction("Set origin...");
+    connect(d->setOrigin, &QAction::triggered, this, &Scatter2dChart::changeOrigin);
+
+    d->copyOrigAndZoom = new QAction("Copy origin and zoom");
+    connect(d->copyOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::copyOrigAndZoom);
+
+    d->pasteOrigAndZoom = new QAction("Paste origin and zoom");
+    connect(d->pasteOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -122,7 +149,8 @@ void Scatter2dChart::drawDataPoints()
 
     for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
         if (d->m_dArrayIterSize > 1) {
-            d->m_painter.setBrush(QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
+            d->m_painter.setBrush(
+                QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
         } else {
             d->m_painter.setBrush(d->m_dColor.at(i));
         }
@@ -381,6 +409,9 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
         d->m_offsetX += delposs.x();
         d->m_offsetY -= delposs.y();
 
+        //        qDebug() << "offsetX:" << (d->m_offsetX / (height() / devicePixelRatioF())) / d->m_zoomRatio;
+        //        qDebug() << "offsetY:" << (d->m_offsetY / (height() / devicePixelRatioF())) / d->m_zoomRatio;
+
         d->needUpdatePixmap = true;
         update();
     }
@@ -389,6 +420,109 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
     // reserved
+}
+
+void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
+{
+    const double scaleRatio = height() / devicePixelRatioF();
+    const QString sizePos = QString("X: %1 | Y: %2 | %3\%")
+                                .arg(QString::number((d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0),
+                                     QString::number((d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0),
+                                     QString::number(d->m_zoomRatio * 100.0));
+    QMenu menu(this);
+    menu.addAction(sizePos);
+    menu.addSeparator();
+    menu.addAction(d->setZoom);
+    menu.addAction(d->setOrigin);
+    menu.addSeparator();
+    menu.addAction(d->copyOrigAndZoom);
+    menu.addAction(d->pasteOrigAndZoom);
+    menu.exec(event->globalPos());
+}
+
+void Scatter2dChart::changeZoom()
+{
+    const double currentZoom = d->m_zoomRatio * 100.0;
+    const double scaleRatio = height() / devicePixelRatioF();
+    const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio;
+    const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio;
+    bool isZoomOkay(false);
+    const double setZoom =
+        QInputDialog::getDouble(this, "Set zoom", "Zoom", currentZoom, 80.0, 20000.0, 1, &isZoomOkay);
+    if (isZoomOkay) {
+        d->m_zoomRatio = setZoom / 100.0;
+        d->m_offsetX = (currentXOffset * d->m_zoomRatio) * scaleRatio;
+        d->m_offsetY = (currentYOffset * d->m_zoomRatio) * scaleRatio;
+        drawDownscaled(200);
+        d->needUpdatePixmap = true;
+        update();
+    }
+}
+
+void Scatter2dChart::changeOrigin()
+{
+    const double scaleRatio = height() / devicePixelRatioF();
+    const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0;
+    const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0;
+    bool isXOkay(false);
+    bool isYOkay(false);
+    const double setX = QInputDialog::getDouble(this, "Set origin", "Origin X", currentXOffset, -0.1, 1.0, 5, &isXOkay);
+    const double setY = QInputDialog::getDouble(this, "Set origin", "Origin Y", currentYOffset, -0.1, 1.0, 5, &isYOkay);
+    if (isXOkay && isYOkay) {
+        const double setXToVal = ((setX * -1.0) * d->m_zoomRatio) * scaleRatio;
+        const double setYToVal = ((setY * -1.0) * d->m_zoomRatio) * scaleRatio;
+        d->m_offsetX = setXToVal;
+        d->m_offsetY = setYToVal;
+        drawDownscaled(200);
+        d->needUpdatePixmap = true;
+        update();
+    }
+}
+
+void Scatter2dChart::copyOrigAndZoom()
+{
+    const double currentZoom = d->m_zoomRatio * 100.0;
+    const double scaleRatio = height() / devicePixelRatioF();
+    const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0;
+    const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0;
+
+    const QString clipText = QString("QtGamutPlotter:%1;%2;%3")
+                                 .arg(QString::number(currentZoom, 'f', 3),
+                                      QString::number(currentXOffset, 'f', 8),
+                                      QString::number(currentYOffset, 'f', 8));
+
+    d->m_clipb->setText(clipText);
+}
+
+void Scatter2dChart::pasteOrigAndZoom()
+{
+    QString fromClip = d->m_clipb->text();
+    if (fromClip.contains("QtGamutPlotter:")) {
+        const double scaleRatio = height() / devicePixelRatioF();
+        const QString cleanClip = fromClip.replace("QtGamutPlotter:", "");
+        const QStringList parsed = cleanClip.split(";");
+
+        if (parsed.size() == 3) {
+            const double setZoom = parsed.at(0).toDouble() / 100.0;
+            if (setZoom > 0.8 && setZoom < 200.0) {
+                d->m_zoomRatio = setZoom;
+            }
+
+            const double setX = parsed.at(1).toDouble() * -1.0;
+            const double setY = parsed.at(2).toDouble() * -1.0;
+
+            if ((setX > -1.0 && setX < 1.0) && (setY > -1.0 && setY < 1.0)) {
+                const double setXToVal = (setX * d->m_zoomRatio) * scaleRatio;
+                const double setYToVal = (setY * d->m_zoomRatio) * scaleRatio;
+                d->m_offsetX = setXToVal;
+                d->m_offsetY = setYToVal;
+
+                drawDownscaled(200);
+                d->needUpdatePixmap = true;
+                update();
+            }
+        }
+    }
 }
 
 void Scatter2dChart::whenScrollTimerEnds()

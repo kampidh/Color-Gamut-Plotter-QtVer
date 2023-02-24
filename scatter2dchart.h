@@ -39,6 +39,13 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
+
+private slots:
+    void changeZoom();
+    void changeOrigin();
+    void copyOrigAndZoom();
+    void pasteOrigAndZoom();
 
 private:
     void drawDataPoints();
