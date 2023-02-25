@@ -53,6 +53,8 @@ class Q_DECL_HIDDEN Scatter2dChart::Private
 {
 public:
     bool needUpdatePixmap{false};
+    bool isMouseHold{false};
+    bool isDownscaled{false};
     QPainter m_painter;
     QPixmap m_pixmap;
     QVector<QVector3D> m_dArray;
@@ -61,6 +63,7 @@ public:
     QVector<QColor> m_dColor;
     int m_particleSize;
     int m_particleSizeStored;
+    int m_drawnParticles{0};
     double m_zoomRatio{1.1};
     int m_offsetX{100};
     int m_offsetY{50};
@@ -72,6 +75,15 @@ public:
     QAction *setOrigin;
     QAction *copyOrigAndZoom;
     QAction *pasteOrigAndZoom;
+    QAction *drawLabels;
+    QAction *drawGrids;
+    QAction *drawSrgbGamut;
+    QAction *drawImgGamut;
+
+    bool enableLabels{true};
+    bool enableGrids{true};
+    bool enableSrgbGamut{true};
+    bool enableImgGamut{true};
 
     QClipboard *m_clipb;
 };
@@ -98,6 +110,26 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
     d->pasteOrigAndZoom = new QAction("Paste origin and zoom");
     connect(d->pasteOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
+
+    d->drawLabels = new QAction("Draw labels");
+    d->drawLabels->setCheckable(true);
+    d->drawLabels->setChecked(d->enableLabels);
+    connect(d->drawLabels, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawGrids = new QAction("Draw grids and spectral line");
+    d->drawGrids->setCheckable(true);
+    d->drawGrids->setChecked(d->enableGrids);
+    connect(d->drawGrids, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawSrgbGamut = new QAction("Draw sRGB gamut");
+    d->drawSrgbGamut->setCheckable(true);
+    d->drawSrgbGamut->setChecked(d->enableSrgbGamut);
+    connect(d->drawSrgbGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawImgGamut = new QAction("Draw image gamut");
+    d->drawImgGamut->setCheckable(true);
+    d->drawImgGamut->setChecked(d->enableImgGamut);
+    connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -140,6 +172,14 @@ QPoint Scatter2dChart::mapPoint(QPointF xy)
 
 void Scatter2dChart::drawDataPoints()
 {
+    // prepare window dimension
+    const double scaleHRatio = height() / devicePixelRatioF();
+    const double scaleWRatio = width() / devicePixelRatioF();
+    const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
+    const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
+    const double maxX = ((d->m_offsetX - scaleWRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
+    const double maxY = ((d->m_offsetY - scaleHRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
+
     d->m_painter.save();
     if (d->m_dArray.size() < 500000 && d->m_dArrayIterSize == 1) {
         d->m_painter.setRenderHint(QPainter::Antialiasing);
@@ -147,20 +187,27 @@ void Scatter2dChart::drawDataPoints()
     d->m_painter.setPen(Qt::transparent);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
+    d->m_drawnParticles = 0;
+
     for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
-        if (d->m_dArrayIterSize > 1) {
-            d->m_painter.setBrush(
-                QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
-        } else {
-            d->m_painter.setBrush(d->m_dColor.at(i));
+        // only draw what's inside the window and skip offscreen points
+        if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
+            && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
+            if (d->m_dArrayIterSize > 1) {
+                d->m_painter.setBrush(
+                    QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
+            } else {
+                d->m_painter.setBrush(d->m_dColor.at(i));
+            }
+
+            const QPoint map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
+
+            d->m_painter.drawEllipse(map.x() - (d->m_particleSize / 2),
+                                     map.y() - (d->m_particleSize / 2),
+                                     d->m_particleSize,
+                                     d->m_particleSize);
+            d->m_drawnParticles++;
         }
-
-        const QPoint map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
-
-        d->m_painter.drawEllipse(map.x() - (d->m_particleSize / 2),
-                                 map.y() - (d->m_particleSize / 2),
-                                 d->m_particleSize,
-                                 d->m_particleSize);
     }
 
     d->m_painter.restore();
@@ -198,6 +245,7 @@ void Scatter2dChart::drawSrgbTriangle()
 {
     d->m_painter.save();
     d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
     QPen pn;
     pn.setColor(QColor(128, 128, 128, 128));
     pn.setWidth(1);
@@ -212,6 +260,7 @@ void Scatter2dChart::drawSrgbTriangle()
     d->m_painter.drawLine(mapG, mapB);
     d->m_painter.drawLine(mapB, mapR);
 
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     d->m_painter.setBrush(Qt::white);
 
     d->m_painter.drawEllipse(mapW.x() - (4 / 2), mapW.y() - (4 / 2), 4, 4);
@@ -223,6 +272,7 @@ void Scatter2dChart::drawGamutTriangleWP()
 {
     d->m_painter.save();
     d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
 
     QPen pn;
     pn.setColor(QColor(128, 0, 0, 128));
@@ -241,6 +291,7 @@ void Scatter2dChart::drawGamutTriangleWP()
 
     d->m_painter.drawPolygon(gamutPoly);
 
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     const QPoint mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
     d->m_painter.setBrush(Qt::white);
     d->m_painter.drawEllipse(mapW.x() - (4 / 2), mapW.y() - (4 / 2), 4, 4);
@@ -310,11 +361,20 @@ void Scatter2dChart::drawGrids()
 void Scatter2dChart::drawLabels()
 {
     d->m_painter.save();
-    d->m_painter.setRenderHint(QPainter::Antialiasing);
-    d->m_painter.setPen(QPen(Qt::gray));
-    d->m_painter.setFont(QFont("Courier", 12, QFont::Medium));
-    const QString zoomLvl = "Zoom: " + QString::number(d->m_zoomRatio * 100.0, 'f', 2) + "%";
-    d->m_painter.drawText(rect(), Qt::AlignBottom | Qt::AlignRight, zoomLvl);
+//    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setPen(QPen(Qt::lightGray));
+    d->m_painter.setFont(QFont("Courier", 11, QFont::Medium));
+    const double scaleHRatio = height() / devicePixelRatioF();
+    const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
+    const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
+    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nOrigin: x:%1 | y:%2\nZoom: %3\%")
+                                .arg(QString::number(originX, 'f', 6),
+                                     QString::number(originY, 'f', 6),
+                                     QString::number(d->m_zoomRatio * 100.0, 'f', 2),
+                                     QString::number(d->m_dArray.size()),
+                                     QString::number(d->m_drawnParticles),
+                                     QString(d->isDownscaled ? "rendering..." : "rendered"));
+    d->m_painter.drawText(rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
 
     d->m_painter.restore();
 }
@@ -328,12 +388,20 @@ void Scatter2dChart::doUpdate()
 
     d->m_painter.begin(&d->m_pixmap);
 
-    drawGrids();
-    drawSpectralLine();
+    if (d->enableGrids) {
+        drawGrids();
+        drawSpectralLine();
+    }
     drawDataPoints();
-    drawSrgbTriangle();
-    drawGamutTriangleWP();
-    drawLabels();
+    if (d->enableSrgbGamut) {
+        drawSrgbTriangle();
+    }
+    if (d->enableImgGamut) {
+        drawGamutTriangleWP();
+    }
+    if (d->enableLabels) {
+        drawLabels();
+    }
 
     d->m_painter.end();
 }
@@ -352,7 +420,7 @@ void Scatter2dChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     // downscale
-    drawDownscaled(1000);
+    drawDownscaled(500);
     d->needUpdatePixmap = true;
 }
 
@@ -368,7 +436,7 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
 
     // Zoom cap (around 80% - 20000%)
     if (d->m_zoomRatio + zoomIncrement > 0.8 && d->m_zoomRatio + zoomIncrement < 200.0) {
-        drawDownscaled(1000);
+        drawDownscaled(500);
 
         // window screen space -> absolute space for a smoother zooming at cursor point
         // I probably reinventing the wheel here but well...
@@ -401,7 +469,8 @@ void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 {
     if (event->buttons() & Qt::LeftButton) {
-        drawDownscaled(1000);
+        d->isMouseHold = true;
+        drawDownscaled(500);
 
         const QPoint delposs(event->pos() - d->m_lastPos);
         d->m_lastPos = event->pos();
@@ -409,8 +478,8 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
         d->m_offsetX += delposs.x();
         d->m_offsetY -= delposs.y();
 
-        //        qDebug() << "offsetX:" << (d->m_offsetX / (height() / devicePixelRatioF())) / d->m_zoomRatio;
-        //        qDebug() << "offsetY:" << (d->m_offsetY / (height() / devicePixelRatioF())) / d->m_zoomRatio;
+        // qDebug() << "offsetX:" << (d->m_offsetX / (height() / devicePixelRatioF())) / d->m_zoomRatio;
+        // qDebug() << "offsetY:" << (d->m_offsetY / (height() / devicePixelRatioF())) / d->m_zoomRatio;
 
         d->needUpdatePixmap = true;
         update();
@@ -419,6 +488,12 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 
 void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::LeftButton) {
+        d->isMouseHold = false;
+        drawDownscaled(500);
+        d->needUpdatePixmap = true;
+        update();
+    }
     // reserved
 }
 
@@ -440,6 +515,11 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addSeparator();
     menu.addAction(d->copyOrigAndZoom);
     menu.addAction(d->pasteOrigAndZoom);
+    menu.addSeparator();
+    menu.addAction(d->drawLabels);
+    menu.addAction(d->drawGrids);
+    menu.addAction(d->drawSrgbGamut);
+    menu.addAction(d->drawImgGamut);
     menu.exec(event->globalPos());
 }
 
@@ -528,9 +608,24 @@ void Scatter2dChart::pasteOrigAndZoom()
     }
 }
 
+void Scatter2dChart::changeProperties()
+{
+    d->enableLabels = d->drawLabels->isChecked();
+    d->enableGrids = d->drawGrids->isChecked();
+    d->enableSrgbGamut = d->drawSrgbGamut->isChecked();
+    d->enableImgGamut = d->drawImgGamut->isChecked();
+
+    drawDownscaled(200);
+    d->needUpdatePixmap = true;
+    update();
+}
+
 void Scatter2dChart::whenScrollTimerEnds()
 {
     // render at full again
+    if (d->isMouseHold)
+        return;
+    d->isDownscaled = false;
     d->m_dArrayIterSize = 1;
     d->m_particleSize = d->m_particleSizeStored;
     d->needUpdatePixmap = true;
@@ -540,7 +635,10 @@ void Scatter2dChart::whenScrollTimerEnds()
 void Scatter2dChart::drawDownscaled(int delayms)
 {
     // downscale
-    d->m_scrollTimer->start(delayms);
+    d->isDownscaled = true;
+    if(!d->isMouseHold) {
+        d->m_scrollTimer->start(delayms);
+    }
     if (d->m_dArray.size() > 2000000) {
         d->m_dArrayIterSize = 100;
     } else if (d->m_dArray.size() > 500000) {
@@ -553,7 +651,7 @@ void Scatter2dChart::drawDownscaled(int delayms)
 
 void Scatter2dChart::resetCamera()
 {
-    drawDownscaled(1000);
+    drawDownscaled(500);
 
     d->m_zoomRatio = 1.1;
     d->m_offsetX = 100;
