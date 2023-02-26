@@ -64,6 +64,7 @@ public:
     int m_particleSize;
     int m_particleSizeStored;
     int m_drawnParticles{0};
+    int m_neededParticles{0};
     double m_zoomRatio{1.1};
     int m_offsetX{100};
     int m_offsetY{50};
@@ -79,11 +80,16 @@ public:
     QAction *drawGrids;
     QAction *drawSrgbGamut;
     QAction *drawImgGamut;
+    QAction *setStaticDownscale;
+    QAction *setAlpha;
+    QAction *setAntiAliasing;
 
     bool enableLabels{true};
     bool enableGrids{true};
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
+    bool enableStaticDownscale{false};
+    bool enableAA{false};
 
     QClipboard *m_clipb;
 };
@@ -130,6 +136,20 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawImgGamut->setCheckable(true);
     d->drawImgGamut->setChecked(d->enableImgGamut);
     connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->setStaticDownscale = new QAction("Use static downscaling");
+    d->setStaticDownscale->setCheckable(true);
+    d->setStaticDownscale->setChecked(d->enableStaticDownscale);
+    connect(d->setStaticDownscale, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->setAntiAliasing = new QAction("Enable AntiAliasing (slow!)");
+    d->setAntiAliasing->setToolTip("Only use for final render, as it only have very small impact in visual quality.");
+    d->setAntiAliasing->setCheckable(true);
+    d->setAntiAliasing->setChecked(d->enableAA);
+    connect(d->setAntiAliasing, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->setAlpha = new QAction("Set alpha / brightness...");
+    connect(d->setAlpha, &QAction::triggered, this, &Scatter2dChart::changeAlpha);
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -144,6 +164,7 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
     d->m_dColor = dColor;
     d->m_particleSize = size;
     d->m_particleSizeStored = size;
+    d->m_neededParticles = dArray.size();
 
     // set alpha based on numpoints
     const double alphaToLerp =
@@ -181,13 +202,28 @@ void Scatter2dChart::drawDataPoints()
     const double maxY = ((d->m_offsetY - scaleHRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
 
     d->m_painter.save();
-    if (d->m_dArray.size() < 500000 && d->m_dArrayIterSize == 1) {
-        d->m_painter.setRenderHint(QPainter::Antialiasing);
+    if ((d->m_dArray.size() < 500000 && d->m_dArrayIterSize == 1) || d->enableAA) {
+        if (d->enableAA) {
+            d->m_painter.setRenderHint(QPainter::HighQualityAntialiasing);
+        } else {
+            d->m_painter.setRenderHint(QPainter::Antialiasing);
+        }
     }
     d->m_painter.setPen(Qt::transparent);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     d->m_drawnParticles = 0;
+
+    if (!d->enableStaticDownscale) {
+        // only for dynamic downscaling, calculate how much points is needed for onscreen rendering
+        d->m_neededParticles = 0;
+        for (int i = 0; i < d->m_dArray.size(); i++) {
+            if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
+                && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
+                d->m_neededParticles++;
+            }
+        }
+    }
 
     for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
         // only draw what's inside the window and skip offscreen points
@@ -488,7 +524,7 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 
 void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
+    if ((event->button() == Qt::LeftButton) && d->isMouseHold) {
         d->isMouseHold = false;
         drawDownscaled(500);
         d->needUpdatePixmap = true;
@@ -520,6 +556,10 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(d->drawGrids);
     menu.addAction(d->drawSrgbGamut);
     menu.addAction(d->drawImgGamut);
+    menu.addSeparator();
+    menu.addAction(d->setStaticDownscale);
+    menu.addAction(d->setAntiAliasing);
+    menu.addAction(d->setAlpha);
     menu.exec(event->globalPos());
 }
 
@@ -600,7 +640,7 @@ void Scatter2dChart::pasteOrigAndZoom()
                 d->m_offsetX = setXToVal;
                 d->m_offsetY = setYToVal;
 
-                drawDownscaled(200);
+                drawDownscaled(50);
                 d->needUpdatePixmap = true;
                 update();
             }
@@ -614,10 +654,29 @@ void Scatter2dChart::changeProperties()
     d->enableGrids = d->drawGrids->isChecked();
     d->enableSrgbGamut = d->drawSrgbGamut->isChecked();
     d->enableImgGamut = d->drawImgGamut->isChecked();
+    d->enableStaticDownscale = d->setStaticDownscale->isChecked();
+    d->enableAA = d->setAntiAliasing->isChecked();
 
-    drawDownscaled(200);
+    drawDownscaled(100);
     d->needUpdatePixmap = true;
     update();
+}
+
+void Scatter2dChart::changeAlpha()
+{
+    const double currentAlpha = d->m_dColor.at(0).alphaF();
+    bool isAlphaOkay(false);
+    const double setAlpha =
+        QInputDialog::getDouble(this, "Set alpha", "Per-particle alpha", currentAlpha, 0.1, 1.0, 2, &isAlphaOkay);
+    if (isAlphaOkay) {
+        for (int i = 0; i < d->m_dColor.size(); i++) {
+            d->m_dColor[i].setAlphaF(setAlpha);
+        }
+
+        drawDownscaled(100);
+        d->needUpdatePixmap = true;
+        update();
+    }
 }
 
 void Scatter2dChart::whenScrollTimerEnds()
@@ -639,14 +698,28 @@ void Scatter2dChart::drawDownscaled(int delayms)
     if(!d->isMouseHold) {
         d->m_scrollTimer->start(delayms);
     }
-    if (d->m_dArray.size() > 2000000) {
-        d->m_dArrayIterSize = 100;
-    } else if (d->m_dArray.size() > 500000) {
-        d->m_dArrayIterSize = 50;
+
+    // dynamic downscaling
+    if (!d->enableStaticDownscale) {
+        const int iterSize = d->m_neededParticles / 50000; // 50k maximum particles
+        if (iterSize > 1) {
+            d->m_dArrayIterSize = iterSize;
+            d->m_particleSize = 4;
+        } else {
+            d->m_dArrayIterSize = 1;
+            d->m_particleSize = 4;
+        }
     } else {
-        d->m_dArrayIterSize = 10;
+        // static downscaling
+        if (d->m_dArray.size() > 2000000) {
+            d->m_dArrayIterSize = 100;
+        } else if (d->m_dArray.size() > 500000) {
+            d->m_dArrayIterSize = 50;
+        } else {
+            d->m_dArrayIterSize = 10;
+        }
+        d->m_particleSize = 4;
     }
-    d->m_particleSize = 4;
 }
 
 void Scatter2dChart::resetCamera()

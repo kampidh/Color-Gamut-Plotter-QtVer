@@ -47,6 +47,7 @@ private slots:
     void copyOrigAndZoom();
     void pasteOrigAndZoom();
     void changeProperties();
+    void changeAlpha();
 
 private:
     void drawDataPoints();
