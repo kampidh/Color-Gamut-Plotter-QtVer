@@ -156,9 +156,12 @@ ScatterDialog::~ScatterDialog()
 
 void ScatterDialog::saveButtonPress()
 {
+    QFileInfo info(d->m_fName);
+    QString infoDir = info.absolutePath();
+
     const QString tmpFileName = QFileDialog::getSaveFileName(this,
                                                              tr("Save plot as image"),
-                                                             QDir::currentPath(),
+                                                             infoDir,
                                                              tr("Portable Network Graphics (*.png)"));
     if (tmpFileName.isEmpty()) {
         return;
@@ -166,8 +169,6 @@ void ScatterDialog::saveButtonPress()
 
     const auto useLabel =
         QMessageBox::question(this, "Save label", "Do you want to include filename and profile label attached?");
-
-    QFileInfo info(d->m_fName);
 
     QString chTitle(info.fileName());
     chTitle += "\n";
