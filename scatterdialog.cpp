@@ -164,6 +164,9 @@ void ScatterDialog::saveButtonPress()
         return;
     }
 
+    const auto useLabel =
+        QMessageBox::question(this, "Save label", "Do you want to include filename and profile label attached?");
+
     QFileInfo info(d->m_fName);
 
     QString chTitle(info.fileName());
@@ -174,20 +177,22 @@ void ScatterDialog::saveButtonPress()
         chTitle += "None (Assumed as sRGB)";
     }
 
-    //    QImage out = d->m_3dScatter->renderToImage(8);
+    // QImage out = d->m_3dScatter->renderToImage(8);
 
     QPixmap rend(d->m_container->size());
     d->m_container->render(&rend);
     QImage out = rend.toImage();
 
-    QPainter pn;
-    if (!pn.begin(&out)) {
-        return;
+    if (useLabel == QMessageBox::Yes) {
+        QPainter pn;
+        if (!pn.begin(&out)) {
+            return;
+        }
+        pn.setPen(QPen(Qt::white));
+        pn.setFont(QFont("Courier", 10, QFont::Medium));
+        pn.drawText(out.rect(), Qt::AlignTop | Qt::AlignHCenter | Qt::TextWordWrap, chTitle);
+        pn.end();
     }
-    pn.setPen(QPen(Qt::white));
-    pn.setFont(QFont("Courier", 10, QFont::Medium));
-    pn.drawText(out.rect(), Qt::AlignTop | Qt::AlignHCenter | Qt::TextWordWrap, chTitle);
-    pn.end();
 
     if (out.save(tmpFileName)) {
         QMessageBox msg;
