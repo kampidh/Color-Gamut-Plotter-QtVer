@@ -72,6 +72,9 @@ Scatter3dChart::Scatter3dChart(const QSurfaceFormat *format, QWindow *parent)
     axisY()->setTitle("Y");
     axisZ()->setTitle("y");
 
+    axisX()->setRange(-0.1, 0.9);
+    axisZ()->setRange(-0.1, 0.9);
+
     activeTheme()->setLightStrength(0.0);
     activeTheme()->setAmbientLightStrength(1.0);
     activeTheme()->setGridLineColor(QColor(20, 20, 20));
