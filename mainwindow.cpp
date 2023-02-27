@@ -74,20 +74,6 @@ void MainWindow::openFileName()
     }
 }
 
-template<typename T, typename std::enable_if_t<std::numeric_limits<T>::is_integer, int> = 1>
-inline double value(const T &src)
-{
-    double v = double(src) / float(std::numeric_limits<T>::max());
-    return v;
-}
-
-template<typename T, typename std::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 1>
-inline double value(const T &src)
-{
-    double v = double(src);
-    return v;
-}
-
 void MainWindow::goPlot()
 {
     //    plotBtn->setEnabled(false);
