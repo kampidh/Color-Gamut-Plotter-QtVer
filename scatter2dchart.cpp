@@ -182,13 +182,12 @@ void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &d
     d->m_dWhitePoint = dWhitePoint;
 }
 
-QPoint Scatter2dChart::mapPoint(QPointF xy)
+QPointF Scatter2dChart::mapPoint(QPointF xy)
 {
     // Maintain ascpect ratio, otherwise use width() on X
-    return QPoint((static_cast<int>((xy.x() * d->m_zoomRatio) * (height() / devicePixelRatioF())) + d->m_offsetX),
-                  (static_cast<int>((height() / devicePixelRatioF())
-                                    - ((xy.y() * d->m_zoomRatio) * (height() / devicePixelRatioF())))
-                   - d->m_offsetY));
+    return QPointF(((xy.x() * d->m_zoomRatio) * (height() / devicePixelRatioF()) + d->m_offsetX),
+                   ((height() / devicePixelRatioF() - ((xy.y() * d->m_zoomRatio) * (height() / devicePixelRatioF())))
+                    - d->m_offsetY));
 }
 
 void Scatter2dChart::drawDataPoints()
@@ -202,12 +201,8 @@ void Scatter2dChart::drawDataPoints()
     const double maxY = ((d->m_offsetY - scaleHRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
 
     d->m_painter.save();
-    if ((d->m_dArray.size() < 500000 && d->m_dArrayIterSize == 1) || d->enableAA) {
-        if (d->enableAA) {
-            d->m_painter.setRenderHint(QPainter::HighQualityAntialiasing);
-        } else {
-            d->m_painter.setRenderHint(QPainter::Antialiasing);
-        }
+    if (!d->isDownscaled && d->enableAA) {
+        d->m_painter.setRenderHint(QPainter::Antialiasing);
     }
     d->m_painter.setPen(Qt::transparent);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
@@ -236,12 +231,13 @@ void Scatter2dChart::drawDataPoints()
                 d->m_painter.setBrush(d->m_dColor.at(i));
             }
 
-            const QPoint map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
+            const QPointF map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
 
-            d->m_painter.drawEllipse(map.x() - (d->m_particleSize / 2),
-                                     map.y() - (d->m_particleSize / 2),
-                                     d->m_particleSize,
-                                     d->m_particleSize);
+            if (d->enableAA && !d->isDownscaled) {
+                d->m_painter.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
+            } else {
+                d->m_painter.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
+            }
             d->m_drawnParticles++;
         }
     }
@@ -258,12 +254,12 @@ void Scatter2dChart::drawSpectralLine()
     pn.setWidth(1);
     d->m_painter.setPen(pn);
 
-    QPoint mapB;
-    QPoint mapC;
+    QPointF mapB;
+    QPointF mapC;
 
     for (int x = 380; x <= 700; x += 5) {
         int ix = (x - 380) / 5;
-        const QPoint map = mapPoint(QPointF(spectral_chromaticity[ix][0], spectral_chromaticity[ix][1]));
+        const QPointF map = mapPoint(QPointF(spectral_chromaticity[ix][0], spectral_chromaticity[ix][1]));
 
         if (x > 380) {
             d->m_painter.drawLine(mapB, map);
@@ -287,10 +283,10 @@ void Scatter2dChart::drawSrgbTriangle()
     pn.setWidth(1);
     d->m_painter.setPen(pn);
 
-    QPoint mapR = mapPoint(QPointF(0.64, 0.33));
-    QPoint mapG = mapPoint(QPointF(0.3, 0.6));
-    QPoint mapB = mapPoint(QPointF(0.15, 0.06));
-    QPoint mapW = mapPoint(QPointF(0.3127, 0.3290));
+    QPointF mapR = mapPoint(QPointF(0.64, 0.33));
+    QPointF mapG = mapPoint(QPointF(0.3, 0.6));
+    QPointF mapB = mapPoint(QPointF(0.15, 0.06));
+    QPointF mapW = mapPoint(QPointF(0.3127, 0.3290));
 
     d->m_painter.drawLine(mapR, mapG);
     d->m_painter.drawLine(mapG, mapB);
@@ -328,7 +324,7 @@ void Scatter2dChart::drawGamutTriangleWP()
     d->m_painter.drawPolygon(gamutPoly);
 
     d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    const QPoint mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
+    const QPointF mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
     d->m_painter.setBrush(Qt::white);
     d->m_painter.drawEllipse(mapW.x() - (4 / 2), mapW.y() - (4 / 2), 4, 4);
 

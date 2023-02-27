@@ -59,7 +59,7 @@ private:
     void doUpdate();
     void whenScrollTimerEnds();
     void drawDownscaled(int delayms);
-    QPoint mapPoint(QPointF xy);
+    QPointF mapPoint(QPointF xy);
 
     class Private;
     Private *const d{nullptr};
