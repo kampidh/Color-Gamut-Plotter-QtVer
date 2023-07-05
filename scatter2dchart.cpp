@@ -66,11 +66,13 @@ public:
     int m_drawnParticles{0};
     int m_neededParticles{0};
     double m_zoomRatio{1.1};
+    double m_pixmapSize{1.0};
     int m_offsetX{100};
     int m_offsetY{50};
     QPoint m_lastPos{};
     int m_dArrayIterSize = 1;
     QTimer *m_scrollTimer;
+    QFont m_labelFont;
 
     QAction *setZoom;
     QAction *setOrigin;
@@ -83,6 +85,8 @@ public:
     QAction *setStaticDownscale;
     QAction *setAlpha;
     QAction *setAntiAliasing;
+    QAction *setParticleSize;
+    QAction *setPixmapSize;
 
     bool enableLabels{true};
     bool enableGrids{true};
@@ -102,6 +106,8 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->m_scrollTimer = new QTimer(this);
     d->m_scrollTimer->setSingleShot(true);
     connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
+
+    d->m_labelFont = QFont("Courier", 11, QFont::Medium);
 
     d->m_clipb = QApplication::clipboard();
 
@@ -148,6 +154,12 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->setAntiAliasing->setChecked(d->enableAA);
     connect(d->setAntiAliasing, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
+    d->setParticleSize = new QAction("Set particle size...");
+    connect(d->setParticleSize, &QAction::triggered, this, &Scatter2dChart::changeParticleSize);
+
+    d->setPixmapSize = new QAction("Set render scaling...");
+    connect(d->setPixmapSize, &QAction::triggered, this, &Scatter2dChart::changePixmapSize);
+
     d->setAlpha = new QAction("Set alpha / brightness...");
     connect(d->setAlpha, &QAction::triggered, this, &Scatter2dChart::changeAlpha);
 }
@@ -185,16 +197,16 @@ void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &d
 QPointF Scatter2dChart::mapPoint(QPointF xy)
 {
     // Maintain ascpect ratio, otherwise use width() on X
-    return QPointF(((xy.x() * d->m_zoomRatio) * (height() / devicePixelRatioF()) + d->m_offsetX),
-                   ((height() / devicePixelRatioF() - ((xy.y() * d->m_zoomRatio) * (height() / devicePixelRatioF())))
+    return QPointF(((xy.x() * d->m_zoomRatio) * (d->m_pixmap.height() / devicePixelRatioF()) + d->m_offsetX),
+                   ((d->m_pixmap.height() / devicePixelRatioF() - ((xy.y() * d->m_zoomRatio) * (d->m_pixmap.height() / devicePixelRatioF())))
                     - d->m_offsetY));
 }
 
 void Scatter2dChart::drawDataPoints()
 {
     // prepare window dimension
-    const double scaleHRatio = height() / devicePixelRatioF();
-    const double scaleWRatio = width() / devicePixelRatioF();
+    const double scaleHRatio = d->m_pixmap.height() / devicePixelRatioF();
+    const double scaleWRatio = d->m_pixmap.width() / devicePixelRatioF();
     const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double maxX = ((d->m_offsetX - scaleWRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
@@ -395,8 +407,9 @@ void Scatter2dChart::drawLabels()
     d->m_painter.save();
 //    d->m_painter.setRenderHint(QPainter::Antialiasing);
     d->m_painter.setPen(QPen(Qt::lightGray));
-    d->m_painter.setFont(QFont("Courier", 11, QFont::Medium));
-    const double scaleHRatio = height() / devicePixelRatioF();
+    d->m_labelFont.setPointSize(std::pow(d->m_pixmapSize, 2) * 11);
+    d->m_painter.setFont(d->m_labelFont);
+    const double scaleHRatio = d->m_pixmap.height() / devicePixelRatioF();
     const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
     const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nOrigin: x:%1 | y:%2\nZoom: %3\%")
@@ -406,7 +419,7 @@ void Scatter2dChart::drawLabels()
                                      QString::number(d->m_dArray.size()),
                                      QString::number(d->m_drawnParticles),
                                      QString(d->isDownscaled ? "rendering..." : "rendered"));
-    d->m_painter.drawText(rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
+    d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
 
     d->m_painter.restore();
 }
@@ -414,7 +427,7 @@ void Scatter2dChart::drawLabels()
 void Scatter2dChart::doUpdate()
 {
     d->needUpdatePixmap = false;
-    d->m_pixmap = QPixmap(size() * devicePixelRatioF());
+    d->m_pixmap = QPixmap(size() * devicePixelRatioF() * d->m_pixmapSize);
     d->m_pixmap.setDevicePixelRatio(devicePixelRatioF());
     d->m_pixmap.fill(Qt::black);
 
@@ -445,7 +458,7 @@ void Scatter2dChart::paintEvent(QPaintEvent *)
     if (d->needUpdatePixmap) {
         doUpdate();
     }
-    p.drawPixmap(0, 0, d->m_pixmap);
+    p.drawPixmap(0, 0, d->m_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void Scatter2dChart::resizeEvent(QResizeEvent *event)
@@ -475,7 +488,7 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
         const float windowAspectRatio = width() * 1.0 / height() * 1.0;
         const QPointF scenepos = QPointF((event->position().x() / (width() / devicePixelRatioF()) * windowAspectRatio),
                                          1.0 - (event->position().y() / (height() / devicePixelRatioF())));
-        const int windowUnit = height() / devicePixelRatioF();
+        const int windowUnit = d->m_pixmap.height() / devicePixelRatioF();
         const float windowsAbsUnit = windowUnit * d->m_zoomRatio;
         const QPointF windowSceneCurScaledPos = scenepos / d->m_zoomRatio;
         const QPointF windowSceneCurAbsPos =
@@ -507,8 +520,8 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
         const QPoint delposs(event->pos() - d->m_lastPos);
         d->m_lastPos = event->pos();
 
-        d->m_offsetX += delposs.x();
-        d->m_offsetY -= delposs.y();
+        d->m_offsetX += delposs.x() * d->m_pixmapSize;
+        d->m_offsetY -= delposs.y() * d->m_pixmapSize;
 
         // qDebug() << "offsetX:" << (d->m_offsetX / (height() / devicePixelRatioF())) / d->m_zoomRatio;
         // qDebug() << "offsetY:" << (d->m_offsetY / (height() / devicePixelRatioF())) / d->m_zoomRatio;
@@ -534,10 +547,10 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     const int mouseXPos = event->pos().x();
     const int mouseYPos = height() - event->pos().y();
 
-    const double scaleRatio = height() / devicePixelRatioF();
+    const double scaleRatio = d->m_pixmap.height() / devicePixelRatioF();
     const QString sizePos = QString("Cursor: x: %1 | y: %2 | %3\%")
-                                .arg(QString::number(((d->m_offsetX - mouseXPos) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
-                                     QString::number(((d->m_offsetY - mouseYPos) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
+                                .arg(QString::number(((d->m_offsetX - mouseXPos * d->m_pixmapSize) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
+                                     QString::number(((d->m_offsetY - mouseYPos * d->m_pixmapSize) / scaleRatio) / d->m_zoomRatio * -1.0, 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2));
     QMenu menu(this);
     menu.addAction(sizePos);
@@ -556,13 +569,15 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(d->setStaticDownscale);
     menu.addAction(d->setAntiAliasing);
     menu.addAction(d->setAlpha);
+    menu.addAction(d->setParticleSize);
+    menu.addAction(d->setPixmapSize);
     menu.exec(event->globalPos());
 }
 
 void Scatter2dChart::changeZoom()
 {
     const double currentZoom = d->m_zoomRatio * 100.0;
-    const double scaleRatio = height() / devicePixelRatioF();
+    const double scaleRatio = d->m_pixmap.height() / devicePixelRatioF();
     const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio;
     const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio;
     bool isZoomOkay(false);
@@ -580,7 +595,7 @@ void Scatter2dChart::changeZoom()
 
 void Scatter2dChart::changeOrigin()
 {
-    const double scaleRatio = height() / devicePixelRatioF();
+    const double scaleRatio = d->m_pixmap.height() / devicePixelRatioF();
     const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0;
     const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0;
     bool isXOkay(false);
@@ -601,7 +616,7 @@ void Scatter2dChart::changeOrigin()
 void Scatter2dChart::copyOrigAndZoom()
 {
     const double currentZoom = d->m_zoomRatio * 100.0;
-    const double scaleRatio = height() / devicePixelRatioF();
+    const double scaleRatio = d->m_pixmap.height() / devicePixelRatioF();
     const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0;
     const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0;
 
@@ -617,7 +632,7 @@ void Scatter2dChart::pasteOrigAndZoom()
 {
     QString fromClip = d->m_clipb->text();
     if (fromClip.contains("QtGamutPlotter:")) {
-        const double scaleRatio = height() / devicePixelRatioF();
+        const double scaleRatio = d->m_pixmap.height() / devicePixelRatioF();
         const QString cleanClip = fromClip.replace("QtGamutPlotter:", "");
         const QStringList parsed = cleanClip.split(";");
 
@@ -675,6 +690,42 @@ void Scatter2dChart::changeAlpha()
     }
 }
 
+void Scatter2dChart::changeParticleSize()
+{
+    const int currentParticleSize = d->m_particleSizeStored;
+    bool isParSizeOkay(false);
+    const int setParticleSize = QInputDialog::getInt(this,
+                                                     "Set particle size",
+                                                     "Per-particle size",
+                                                     currentParticleSize,
+                                                     1,
+                                                     10,
+                                                     1,
+                                                     &isParSizeOkay);
+    if (isParSizeOkay) {
+        d->m_particleSizeStored = setParticleSize;
+        drawDownscaled(50);
+        d->needUpdatePixmap = true;
+        update();
+    }
+}
+
+void Scatter2dChart::changePixmapSize()
+{
+    const double currentPixmapSize = d->m_pixmapSize;
+    bool isPixSizeOkay(false);
+    const double setPixmapSize =
+        QInputDialog::getDouble(this, "Set render scaling", "Scale", currentPixmapSize, 1.0, 8.0, 1, &isPixSizeOkay);
+    if (isPixSizeOkay) {
+        d->m_pixmapSize = setPixmapSize;
+        d->m_offsetX = d->m_offsetX * (d->m_pixmapSize / currentPixmapSize);
+        d->m_offsetY = d->m_offsetY * (d->m_pixmapSize / currentPixmapSize);
+        drawDownscaled(50);
+        d->needUpdatePixmap = true;
+        update();
+    }
+}
+
 void Scatter2dChart::whenScrollTimerEnds()
 {
     // render at full again
@@ -697,7 +748,7 @@ void Scatter2dChart::drawDownscaled(int delayms)
 
     // dynamic downscaling
     if (!d->enableStaticDownscale) {
-        const int iterSize = d->m_neededParticles / 50000; // 50k maximum particles
+        const int iterSize = d->m_neededParticles / (50000 /* / qRound(d->m_pixmapSize)*/); // 50k maximum particles
         if (iterSize > 1) {
             d->m_dArrayIterSize = iterSize;
             d->m_particleSize = 4;
@@ -728,4 +779,9 @@ void Scatter2dChart::resetCamera()
 
     d->needUpdatePixmap = true;
     update();
+}
+
+QPixmap *Scatter2dChart::getFullPixmap()
+{
+    return &d->m_pixmap;
 }

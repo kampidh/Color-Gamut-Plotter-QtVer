@@ -30,6 +30,7 @@ public:
     void addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &dColor, int size = 100);
     void addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint);
     void resetCamera();
+    QPixmap *getFullPixmap();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -48,6 +49,8 @@ private slots:
     void pasteOrigAndZoom();
     void changeProperties();
     void changeAlpha();
+    void changeParticleSize();
+    void changePixmapSize();
 
 private:
     void drawDataPoints();

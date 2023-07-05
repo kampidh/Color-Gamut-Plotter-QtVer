@@ -181,9 +181,21 @@ void ScatterDialog::saveButtonPress()
 
     // QImage out = d->m_3dScatter->renderToImage(8);
 
-    QPixmap rend(d->m_container->size());
-    d->m_container->render(&rend);
-    QImage out = rend.toImage();
+    // QPixmap rend;
+    QImage out;
+
+    if (!d->m_is2d) {
+        // rend = QPixmap(d->m_container->size());
+        // d->m_container->render(&rend);
+        // out = rend.toImage();
+        out = d->m_3dScatter->renderToImage(8);
+    } else {
+        if (d->m_2dScatter->getFullPixmap()) {
+            out = d->m_2dScatter->getFullPixmap()->toImage();
+        }
+    }
+
+    Q_ASSERT(!out.isNull());
 
     if (useLabel == QMessageBox::Yes) {
         QPainter pn;
