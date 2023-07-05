@@ -216,7 +216,7 @@ void Scatter2dChart::drawDataPoints()
     if (!d->isDownscaled && d->enableAA) {
         d->m_painter.setRenderHint(QPainter::Antialiasing);
     }
-    d->m_painter.setPen(Qt::transparent);
+    d->m_painter.setPen(Qt::NoPen);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     d->m_drawnParticles = 0;
@@ -751,10 +751,10 @@ void Scatter2dChart::drawDownscaled(int delayms)
         const int iterSize = d->m_neededParticles / (50000 /* / qRound(d->m_pixmapSize)*/); // 50k maximum particles
         if (iterSize > 1) {
             d->m_dArrayIterSize = iterSize;
-            d->m_particleSize = 4;
+            d->m_particleSize = 4 * d->m_pixmapSize;
         } else {
             d->m_dArrayIterSize = 1;
-            d->m_particleSize = 4;
+            d->m_particleSize = 4 * d->m_pixmapSize;
         }
     } else {
         // static downscaling
@@ -765,7 +765,7 @@ void Scatter2dChart::drawDownscaled(int delayms)
         } else {
             d->m_dArrayIterSize = 10;
         }
-        d->m_particleSize = 4;
+        d->m_particleSize = 4 * d->m_pixmapSize;
     }
 }
 
