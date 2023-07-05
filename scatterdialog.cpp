@@ -43,7 +43,7 @@ public:
     bool m_is2d{false};
 };
 
-ScatterDialog::ScatterDialog(QWidget *parent, const QImage &inImage, QString fName, int plotType, int plotDensity)
+ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fName, int plotType, int plotDensity)
     : QWidget(parent)
     , d(new Private)
 {
@@ -51,17 +51,18 @@ ScatterDialog::ScatterDialog(QWidget *parent, const QImage &inImage, QString fNa
         d->m_is2d = true;
     }
     d->m_fName = fName;
-    d->m_inImage = inImage;
+    //    d->m_inImage = inImage;
     d->m_plotType = plotType;
     d->m_plotDensity = plotDensity;
 
-    ImageParserSC parsedImg(inImage, d->m_plotDensity);
-    QVector<QVector3D> outxyY = parsedImg.getXYYArray();
-    QVector<QVector3D> outGamut = parsedImg.getOuterGamut();
-    QVector<QColor> outQC = parsedImg.getQColorArray();
-    const bool isSrgb = parsedImg.isMatchSrgb();
-    d->m_profileName = parsedImg.getProfileName();
-    d->m_wtpt = parsedImg.getWhitePointXY();
+    //    ImageParserSC parsedImg;
+    //    parsedImg.inputFile(inImage, d->m_plotDensity);
+    QVector<QVector3D> outxyY = inImage.getXYYArray();
+    QVector<QVector3D> outGamut = inImage.getOuterGamut();
+    QVector<QColor> outQC = inImage.getQColorArray();
+    const bool isSrgb = inImage.isMatchSrgb();
+    d->m_profileName = inImage.getProfileName();
+    d->m_wtpt = inImage.getWhitePointXY();
 
     if (!d->m_is2d) {
         d->m_3dScatter = new Scatter3dChart();

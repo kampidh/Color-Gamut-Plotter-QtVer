@@ -11,12 +11,16 @@
 #include <QVector2D>
 #include <lcms2.h>
 
+#include "imageformats.h"
+
 class ImageParserSC
 {
 public:
-    ImageParserSC(const QImage &imgIn, int size);
+    ImageParserSC();
     ~ImageParserSC();
 
+    void inputFile(const QImage &imgIn, int size);
+    void inputFile(const QByteArray &rawData, const QByteArray &iccData, ImageColorDepthID depthId, QSize imgSize, int size);
     QString getProfileName();
     QVector2D getWhitePointXY();
     QVector<QVector3D> getXYYArray();

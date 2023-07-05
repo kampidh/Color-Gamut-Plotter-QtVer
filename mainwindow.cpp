@@ -4,10 +4,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  **/
 
-#include "mainwindow.h"
+#include <gamutplotterconfig.h>
+
 #include "./ui_mainwindow.h"
+#include "imageparsersc.h"
+#include "mainwindow.h"
 #include "qevent.h"
 #include "scatterdialog.h"
+
+#ifdef HAVE_JPEGXL
+#include "jxlreader.h"
+#endif
 
 //#include <QEvent>
 #include <QDebug>
@@ -16,8 +23,17 @@
 #include <QMimeData>
 #include <QScreen>
 
+#include <QFloat16>
+
+class Q_DECL_HIDDEN MainWindow::Private
+{
+public:
+    ScatterDialog *sc{nullptr};
+};
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
+    , d(new Private)
 {
     setupUi(this);
     setAcceptDrops(true);
@@ -28,6 +44,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    delete d;
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -69,14 +86,6 @@ void MainWindow::goPlot()
         return;
     }
 
-    const QImage imgs(fileName);
-    if (imgs.isNull()) {
-        QMessageBox msg;
-        msg.warning(this, "Warning", "Invalid or unsupported image format!");
-        plotBtn->setEnabled(true);
-        return;
-    }
-
     const int plotTypeIndex = plotTypeCmb->currentIndex();
     const int plotDensNdx = plotDensCmb->currentIndex();
     const int plotDensity = [&]() {
@@ -88,7 +97,6 @@ void MainWindow::goPlot()
                 return 200;
                 break;
             case 1:
-//            default:
                 return 500;
                 break;
             case 2:
@@ -129,11 +137,51 @@ void MainWindow::goPlot()
         return 10;
     }();
 
-    ScatterDialog *sc = new ScatterDialog(0, imgs, fileName, plotTypeIndex, plotDensity);
-    sc->show();
+    ImageParserSC parsedImage;
 
-    const QPoint midpos(sc->frameSize().width() / 2, sc->frameSize().height() / 2);
-    sc->move(QGuiApplication::screens().at(0)->geometry().center() - midpos);
+#ifdef HAVE_JPEGXL
+    QFileInfo fi(fileName);
+    if (fi.suffix() == "jxl") {
+        JxlReader jxlfile(fileName);
+        QMessageBox msg;
+        if (!jxlfile.processJxl()) {
+            QMessageBox msg;
+            msg.warning(this, "Warning", "Failed to open JXL file!");
+            plotBtn->setEnabled(true);
+            return;
+        }
+        parsedImage.inputFile(jxlfile.getRawImage(),
+                              jxlfile.getRawICC(),
+                              jxlfile.getImageColorDepth(),
+                              jxlfile.getImageDimension(),
+                              plotDensity);
+        plotBtn->setEnabled(true);
+    } else {
+        const QImage imgs(fileName);
+        if (imgs.isNull()) {
+            QMessageBox msg;
+            msg.warning(this, "Warning", "Invalid or unsupported image format!");
+            plotBtn->setEnabled(true);
+            return;
+        }
+        parsedImage.inputFile(imgs, plotDensity);
+    }
+#else
+    const QImage imgs(fileName);
+    if (imgs.isNull()) {
+        QMessageBox msg;
+        msg.warning(this, "Warning", "Invalid or unsupported image format!");
+        plotBtn->setEnabled(true);
+        return;
+    }
+    parsedImage.inputFile(imgs, plotDensity);
+#endif
+
+    d->sc = new ScatterDialog(0, parsedImage, fileName, plotTypeIndex, plotDensity);
+    d->sc->show();
+
+    const QPoint midpos(d->sc->frameSize().width() / 2, d->sc->frameSize().height() / 2);
+    d->sc->move(QGuiApplication::screens().at(0)->geometry().center() - midpos);
 
     //    QObject::connect(sc, &ScatterDialog::destroyed, plotBtn, &QPushButton::setEnabled);
 }
