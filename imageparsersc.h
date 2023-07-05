@@ -30,6 +30,10 @@ public:
     bool isMatchSrgb();
 
 private:
+    void calculateFromFloat(QVector<QVector3D> &imgData,
+                            const cmsHTRANSFORM &srgbtoxyz,
+                            const cmsHTRANSFORM &imgtoxyz,
+                            const cmsHTRANSFORM &xyztosrgb);
     class Private;
     Private* const d {nullptr};
 };

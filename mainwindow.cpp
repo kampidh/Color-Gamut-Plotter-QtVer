@@ -68,7 +68,7 @@ void MainWindow::openFileName()
     const QString tmpFileName = QFileDialog::getOpenFileName(this,
                                                              tr("Open Image"),
                                                              QDir::currentPath(),
-                                                             tr("Image Files (*.png *.jpg *.bmp);;All Files (*)"));
+                                                             tr("Image Files (*.png *.jpg *.bmp *.jxl);;All Files (*)"));
     if (!tmpFileName.isEmpty()) {
         fnameFieldTxt->setText(tmpFileName);
     }
