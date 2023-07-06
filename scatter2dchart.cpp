@@ -60,10 +60,8 @@ public:
     bool isDownscaled{false};
     QPainter m_painter;
     QPixmap m_pixmap;
-    QVector<QVector3D> m_dArray;
     QVector<QVector3D> m_dOutGamut;
     QVector2D m_dWhitePoint;
-    QVector<QColor> m_dColor;
     int m_particleSize;
     int m_particleSizeStored;
     int m_drawnParticles{0};
@@ -184,20 +182,14 @@ Scatter2dChart::~Scatter2dChart()
 void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &dColor, int size)
 {
     d->needUpdatePixmap = true;
-    d->m_dArray = dArray;
-    d->m_dColor = dColor;
     d->m_particleSize = size;
     d->m_particleSizeStored = size;
     d->m_neededParticles = dArray.size();
 
     // set alpha based on numpoints
     const double alphaToLerp =
-        std::min(std::max(1.0 - (d->m_dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
+        std::min(std::max(1.0 - (dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
     const double alphaLerpToGamma = 0.1 + ((1.0 - 0.1) * std::pow(alphaToLerp, 5.5));
-
-    for (int i = 0; i < d->m_dArray.size(); i++) {
-        d->m_dColor[i].setAlphaF(alphaLerpToGamma);
-    }
 
     for (int i = 0; i < dArray.size(); i++) {
         d->m_cPoints.append({dArray.at(i), dColor.at(i)});
@@ -230,10 +222,6 @@ void Scatter2dChart::drawDataPoints()
     const double maxY = ((d->m_offsetY - scaleHRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
 
     d->m_painter.save();
-//    if (!d->isDownscaled && d->enableAA) {
-//        d->m_painter.setRenderHint(QPainter::Antialiasing);
-//    }
-//    d->m_painter.setPen(Qt::NoPen);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     d->m_drawnParticles = 0;
@@ -241,9 +229,9 @@ void Scatter2dChart::drawDataPoints()
     if (!d->enableStaticDownscale) {
         // only for dynamic downscaling, calculate how much points is needed for onscreen rendering
         d->m_neededParticles = 0;
-        for (int i = 0; i < d->m_dArray.size(); i++) {
-            if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
-                && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
+        for (int i = 0; i < d->m_cPoints.size(); i++) {
+            if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
+                && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
                 d->m_neededParticles++;
             }
         }
@@ -291,14 +279,15 @@ void Scatter2dChart::drawDataPoints()
     const int chunkSize = [&]() {
         if (d->m_idealThrCount == 1 || d->m_pixmapSize >= 8.0) {
             return d->m_cPoints.size();
-        } else if (d->m_pixmapSize <= 1.0) {
-            return (d->m_cPoints.size() / d->m_idealThrCount);
+        } else if (d->m_pixmapSize < 1.0) {
+            return (d->m_cPoints.size() / ((d->m_idealThrCount * 7) / 8));
         }
 
         const int divider = static_cast<int>(std::floor((d->m_idealThrCount * (8.0 - d->m_pixmapSize)) / 8.0));
         return (d->m_cPoints.size() / divider);
     }();
 
+    // divide to chunks
     for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
         if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
             && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
@@ -329,28 +318,6 @@ void Scatter2dChart::drawDataPoints()
     tempPainter.end();
 
     d->m_painter.drawPixmap(d->m_pixmap.rect(), temp);
-
-//    for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
-//        // only draw what's inside the window and skip offscreen points
-//        if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
-//            && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
-//            if (d->m_dArrayIterSize > 1) {
-//                d->m_painter.setBrush(
-//                    QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
-//            } else {
-//                d->m_painter.setBrush(d->m_dColor.at(i));
-//            }
-
-//            const QPointF map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
-
-//            if (d->enableAA && !d->isDownscaled) {
-//                d->m_painter.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
-//            } else {
-//                d->m_painter.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
-//            }
-//            d->m_drawnParticles++;
-//        }
-//    }
 
     d->m_painter.restore();
 }
@@ -514,7 +481,7 @@ void Scatter2dChart::drawLabels()
                                 .arg(QString::number(originX, 'f', 6),
                                      QString::number(originY, 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
-                                     QString::number(d->m_dArray.size()),
+                                     QString::number(d->m_cPoints.size()),
                                      QString::number(d->m_drawnParticles),
                                      QString(d->isDownscaled ? "rendering..." : "rendered"));
     d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
@@ -773,7 +740,7 @@ void Scatter2dChart::changeProperties()
 
 void Scatter2dChart::changeAlpha()
 {
-    const double currentAlpha = d->m_dColor.at(0).alphaF();
+    const double currentAlpha = d->m_cPoints.at(0).second.alphaF();
     bool isAlphaOkay(false);
     const double setAlpha = QInputDialog::getDouble(this,
                                                     "Set alpha",
@@ -786,10 +753,6 @@ void Scatter2dChart::changeAlpha()
                                                     Qt::WindowFlags(),
                                                     0.1);
     if (isAlphaOkay) {
-        for (int i = 0; i < d->m_dColor.size(); i++) {
-            d->m_dColor[i].setAlphaF(setAlpha);
-        }
-
         for (ColorPoint &p : d->m_cPoints) {
             p.second.setAlphaF(setAlpha);
         }
@@ -868,9 +831,9 @@ void Scatter2dChart::drawDownscaled(int delayms)
         }
     } else {
         // static downscaling
-        if (d->m_dArray.size() > 2000000) {
+        if (d->m_cPoints.size() > 2000000) {
             d->m_dArrayIterSize = 100;
-        } else if (d->m_dArray.size() > 500000) {
+        } else if (d->m_cPoints.size() > 500000) {
             d->m_dArrayIterSize = 50;
         } else {
             d->m_dArrayIterSize = 10;
