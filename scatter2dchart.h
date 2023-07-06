@@ -32,6 +32,8 @@ public:
     void resetCamera();
     QPixmap *getFullPixmap();
 
+    typedef QPair<QVector3D, QColor> ColorPoint;
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *) override;

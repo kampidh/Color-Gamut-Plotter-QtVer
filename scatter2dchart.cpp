@@ -24,6 +24,9 @@
 #include <QVector3D>
 #include <cmath>
 
+#include <QtConcurrent>
+#include <QFuture>
+
 #include <QApplication>
 #include <QClipboard>
 
@@ -73,6 +76,9 @@ public:
     int m_dArrayIterSize = 1;
     QTimer *m_scrollTimer;
     QFont m_labelFont;
+
+    QVector<ColorPoint> m_cPoints;
+    int m_idealThrCount = 0;
 
     QAction *setZoom;
     QAction *setOrigin;
@@ -162,6 +168,12 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
     d->setAlpha = new QAction("Set alpha / brightness...");
     connect(d->setAlpha, &QAction::triggered, this, &Scatter2dChart::changeAlpha);
+
+    if (QThread::idealThreadCount() > 1) {
+        d->m_idealThrCount = QThread::idealThreadCount();
+    } else {
+        d->m_idealThrCount = 1;
+    }
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -185,6 +197,11 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
 
     for (int i = 0; i < d->m_dArray.size(); i++) {
         d->m_dColor[i].setAlphaF(alphaLerpToGamma);
+    }
+
+    for (int i = 0; i < dArray.size(); i++) {
+        d->m_cPoints.append({dArray.at(i), dColor.at(i)});
+        d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
     }
 }
 
@@ -213,10 +230,10 @@ void Scatter2dChart::drawDataPoints()
     const double maxY = ((d->m_offsetY - scaleHRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
 
     d->m_painter.save();
-    if (!d->isDownscaled && d->enableAA) {
-        d->m_painter.setRenderHint(QPainter::Antialiasing);
-    }
-    d->m_painter.setPen(Qt::NoPen);
+//    if (!d->isDownscaled && d->enableAA) {
+//        d->m_painter.setRenderHint(QPainter::Antialiasing);
+//    }
+//    d->m_painter.setPen(Qt::NoPen);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     d->m_drawnParticles = 0;
@@ -232,27 +249,108 @@ void Scatter2dChart::drawDataPoints()
         }
     }
 
-    for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
-        // only draw what's inside the window and skip offscreen points
-        if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
-            && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
+    std::function<QPixmap(const QVector<ColorPoint> &)> paintInChunk = [&](const QVector<ColorPoint> &chunk) {
+        QPixmap tempMap(d->m_pixmap.size());
+        tempMap.fill(Qt::transparent);
+        QPainter tempPainterMap;
+
+        tempPainterMap.begin(&tempMap);
+        tempPainterMap.save();
+
+        if (!d->isDownscaled && d->enableAA) {
+            tempPainterMap.setRenderHint(QPainter::Antialiasing);
+        }
+        tempPainterMap.setPen(Qt::NoPen);
+        tempPainterMap.setCompositionMode(QPainter::CompositionMode_Lighten);
+
+        for (const ColorPoint &cp : chunk) {
             if (d->m_dArrayIterSize > 1) {
-                d->m_painter.setBrush(
-                    QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
+                tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), 160));
             } else {
-                d->m_painter.setBrush(d->m_dColor.at(i));
+                tempPainterMap.setBrush(cp.second);
             }
 
-            const QPointF map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
+            const QPointF map = mapPoint(QPointF(cp.first.x(), cp.first.y()));
 
             if (d->enableAA && !d->isDownscaled) {
-                d->m_painter.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
+                tempPainterMap.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
             } else {
-                d->m_painter.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
+                tempPainterMap.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
             }
+        }
+        tempPainterMap.restore();
+        tempPainterMap.end();
+
+        return tempMap;
+    };
+
+    QVector<QVector<ColorPoint>> cPoin;
+    QVector<ColorPoint> tmpCp;
+
+    // be nice, safeguard to prevent blowing up the RAM on gigantic upsscaling...
+    const int chunkSize = [&]() {
+        if (d->m_idealThrCount == 1 || d->m_pixmapSize >= 8.0) {
+            return d->m_cPoints.size();
+        } else if (d->m_pixmapSize <= 1.0) {
+            return (d->m_cPoints.size() / d->m_idealThrCount);
+        }
+
+        const int divider = static_cast<int>(std::floor((d->m_idealThrCount * (8.0 - d->m_pixmapSize)) / 8.0));
+        return (d->m_cPoints.size() / divider);
+    }();
+
+    for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
+        if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
+            && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
+            tmpCp.append(d->m_cPoints.at(i));
             d->m_drawnParticles++;
         }
+        if (tmpCp.size() == chunkSize || i >= (d->m_cPoints.size() - d->m_dArrayIterSize - 1)) {
+            cPoin.append(tmpCp);
+            tmpCp.clear();
+        }
     }
+
+    tmpCp.clear();
+
+    QFuture<QPixmap> future = QtConcurrent::mapped(cPoin, paintInChunk);
+
+    future.waitForFinished();
+
+    QPixmap temp(d->m_pixmap.size());
+    temp.fill(Qt::transparent);
+    QPainter tempPainter;
+
+    tempPainter.begin(&temp);
+    tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
+    for (auto it = future.constBegin(); it != future.constEnd(); it++) {
+        tempPainter.drawPixmap(temp.rect(), *it);
+    }
+    tempPainter.end();
+
+    d->m_painter.drawPixmap(d->m_pixmap.rect(), temp);
+
+//    for (int i = 0; i < d->m_dArray.size(); i += d->m_dArrayIterSize) {
+//        // only draw what's inside the window and skip offscreen points
+//        if ((d->m_dArray.at(i).x() > originX && d->m_dArray.at(i).x() < maxX)
+//            && (d->m_dArray.at(i).y() > originY && d->m_dArray.at(i).y() < maxY)) {
+//            if (d->m_dArrayIterSize > 1) {
+//                d->m_painter.setBrush(
+//                    QColor(d->m_dColor.at(i).red(), d->m_dColor.at(i).green(), d->m_dColor.at(i).blue(), 160));
+//            } else {
+//                d->m_painter.setBrush(d->m_dColor.at(i));
+//            }
+
+//            const QPointF map = mapPoint(QPointF(d->m_dArray.at(i).x(), d->m_dArray.at(i).y()));
+
+//            if (d->enableAA && !d->isDownscaled) {
+//                d->m_painter.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
+//            } else {
+//                d->m_painter.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
+//            }
+//            d->m_drawnParticles++;
+//        }
+//    }
 
     d->m_painter.restore();
 }
@@ -465,7 +563,7 @@ void Scatter2dChart::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     // downscale
-    drawDownscaled(500);
+    drawDownscaled(50);
     d->needUpdatePixmap = true;
 }
 
@@ -535,7 +633,7 @@ void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
     if ((event->button() == Qt::LeftButton) && d->isMouseHold) {
         d->isMouseHold = false;
-        drawDownscaled(500);
+        drawDownscaled(10);
         d->needUpdatePixmap = true;
         update();
     }
@@ -587,7 +685,7 @@ void Scatter2dChart::changeZoom()
         d->m_zoomRatio = setZoom / 100.0;
         d->m_offsetX = (currentXOffset * d->m_zoomRatio) * scaleRatio;
         d->m_offsetY = (currentYOffset * d->m_zoomRatio) * scaleRatio;
-        drawDownscaled(200);
+        drawDownscaled(20);
         d->needUpdatePixmap = true;
         update();
     }
@@ -607,7 +705,7 @@ void Scatter2dChart::changeOrigin()
         const double setYToVal = ((setY * -1.0) * d->m_zoomRatio) * scaleRatio;
         d->m_offsetX = setXToVal;
         d->m_offsetY = setYToVal;
-        drawDownscaled(200);
+        drawDownscaled(20);
         d->needUpdatePixmap = true;
         update();
     }
@@ -668,7 +766,7 @@ void Scatter2dChart::changeProperties()
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
 
-    drawDownscaled(100);
+    drawDownscaled(50);
     d->needUpdatePixmap = true;
     update();
 }
@@ -677,14 +775,26 @@ void Scatter2dChart::changeAlpha()
 {
     const double currentAlpha = d->m_dColor.at(0).alphaF();
     bool isAlphaOkay(false);
-    const double setAlpha =
-        QInputDialog::getDouble(this, "Set alpha", "Per-particle alpha", currentAlpha, 0.1, 1.0, 2, &isAlphaOkay);
+    const double setAlpha = QInputDialog::getDouble(this,
+                                                    "Set alpha",
+                                                    "Per-particle alpha",
+                                                    currentAlpha,
+                                                    0.1,
+                                                    1.0,
+                                                    2,
+                                                    &isAlphaOkay,
+                                                    Qt::WindowFlags(),
+                                                    0.1);
     if (isAlphaOkay) {
         for (int i = 0; i < d->m_dColor.size(); i++) {
             d->m_dColor[i].setAlphaF(setAlpha);
         }
 
-        drawDownscaled(100);
+        for (ColorPoint &p : d->m_cPoints) {
+            p.second.setAlphaF(setAlpha);
+        }
+
+        drawDownscaled(50);
         d->needUpdatePixmap = true;
         update();
     }
@@ -771,7 +881,7 @@ void Scatter2dChart::drawDownscaled(int delayms)
 
 void Scatter2dChart::resetCamera()
 {
-    drawDownscaled(500);
+    drawDownscaled(50);
 
     d->m_zoomRatio = 1.1;
     d->m_offsetX = 100;
