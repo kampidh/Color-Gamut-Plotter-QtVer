@@ -58,6 +58,7 @@ public:
     bool needUpdatePixmap{false};
     bool isMouseHold{false};
     bool isDownscaled{false};
+    bool useBucketRender{false};
     QPainter m_painter;
     QPixmap m_pixmap;
     QVector<QVector3D> m_dOutGamut;
@@ -96,7 +97,7 @@ public:
     bool enableGrids{true};
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
-    bool enableStaticDownscale{false};
+    bool enableStaticDownscale{true};
     bool enableAA{false};
 
     QClipboard *m_clipb;
@@ -211,6 +212,14 @@ QPointF Scatter2dChart::mapPoint(QPointF xy)
                     - d->m_offsetY));
 }
 
+/*
+ * Data point rendering modes:
+ * - Bucket, mostly slower but lighter in RAM
+ * - Multipass, mostly faster but RAM heavy especially with large upscaling
+ */
+static const int bucketUnscaleSize = 512;
+//static const int bucketPadding = 2;
+
 void Scatter2dChart::drawDataPoints()
 {
     // prepare window dimension
@@ -237,13 +246,25 @@ void Scatter2dChart::drawDataPoints()
         }
     }
 
-    std::function<QPixmap(const QVector<ColorPoint> &)> paintInChunk = [&](const QVector<ColorPoint> &chunk) {
-        QPixmap tempMap(d->m_pixmap.size());
+    const int bucketSize = bucketUnscaleSize;
+    const int bucketPadding = d->m_particleSize;
+    const QSize workerDim = [&]() {
+        if (d->useBucketRender) {
+            return QSize(bucketSize, bucketSize);
+        }
+        return d->m_pixmap.size();
+    }();
+
+    std::function<QPixmap(const QVector<ColorPointMapped> &)> paintInChunk = [&](const QVector<ColorPointMapped> &chunk) {
+        if (chunk.isEmpty()) {
+            return QPixmap();
+        }
+
+        QPixmap tempMap(workerDim);
         tempMap.fill(Qt::transparent);
         QPainter tempPainterMap;
 
         tempPainterMap.begin(&tempMap);
-        tempPainterMap.save();
 
         if (!d->isDownscaled && d->enableAA) {
             tempPainterMap.setRenderHint(QPainter::Antialiasing);
@@ -251,58 +272,76 @@ void Scatter2dChart::drawDataPoints()
         tempPainterMap.setPen(Qt::NoPen);
         tempPainterMap.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-        for (const ColorPoint &cp : chunk) {
+        for (const ColorPointMapped &cp : chunk) {
             if (d->m_dArrayIterSize > 1) {
                 tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), 160));
             } else {
                 tempPainterMap.setBrush(cp.second);
             }
 
-            const QPointF map = mapPoint(QPointF(cp.first.x(), cp.first.y()));
-
             if (d->enableAA && !d->isDownscaled) {
-                tempPainterMap.drawEllipse(map, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
+                tempPainterMap.drawEllipse(cp.first, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
             } else {
-                tempPainterMap.drawEllipse(map.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
+                tempPainterMap.drawEllipse(cp.first.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
             }
         }
-        tempPainterMap.restore();
+
         tempPainterMap.end();
 
         return tempMap;
     };
 
-    QVector<QVector<ColorPoint>> cPoin;
-    QVector<ColorPoint> tmpCp;
+    QVector<QVector<ColorPointMapped>> fragmentedColPoints;
+    QVector<ColorPointMapped> temporaryColPoints;
 
-    // be nice, safeguard to prevent blowing up the RAM on gigantic upsscaling...
-    const int chunkSize = [&]() {
-        if (d->m_idealThrCount == 1 || d->m_pixmapSize >= 8.0) {
-            return d->m_cPoints.size();
-        } else if (d->m_pixmapSize < 1.0) {
-            return (d->m_cPoints.size() / ((d->m_idealThrCount * 7) / 8));
-        }
+    const int chunkSize = d->m_cPoints.size() / d->m_idealThrCount;
 
-        const int divider = static_cast<int>(std::floor((d->m_idealThrCount * (8.0 - d->m_pixmapSize)) / 8.0));
-        return (d->m_cPoints.size() / divider);
-    }();
+    const int bucketWNum = std::ceil(d->m_pixmap.width() / (bucketSize * 1.0));
+    const int bucketHNum = std::ceil(d->m_pixmap.height() / (bucketSize * 1.0));
+    const int bucketTotalNum = bucketWNum * bucketHNum;
+
+    if (d->useBucketRender) {
+        fragmentedColPoints.resize(bucketTotalNum);
+    }
 
     // divide to chunks
     for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
-        if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
-            && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
-            tmpCp.append(d->m_cPoints.at(i));
-            d->m_drawnParticles++;
-        }
-        if (tmpCp.size() == chunkSize || i >= (d->m_cPoints.size() - d->m_dArrayIterSize - 1)) {
-            cPoin.append(tmpCp);
-            tmpCp.clear();
+        const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
+        if (d->useBucketRender) {
+            bool isDataWritten = false;
+            for (int h = 0; h < bucketHNum; h++) {
+                const int hAbsPos = h * bucketWNum;
+                for (int w = 0; w < bucketWNum; w++) {
+                    const int bucketAbsPos = hAbsPos + w;
+                    const int orX = w * bucketSize;
+                    const int orY = h * bucketSize;
+                    const int maxX = orX + bucketSize;
+                    const int maxY = orY + bucketSize;
+                    if ((map.x() > orX - bucketPadding && map.x() < maxX + (bucketPadding * 2))
+                        && (map.y() > orY - bucketPadding && map.y() < maxY + (bucketPadding * 2))) {
+                        isDataWritten = true;
+                        const QPointF mapAdj = QPointF(map.x() - orX, map.y() - orY);
+                        fragmentedColPoints[bucketAbsPos].append({mapAdj, d->m_cPoints.at(i).second});
+                    }
+                }
+            }
+            // make sure padding data isn't counted
+            if (isDataWritten) {
+                d->m_drawnParticles++;
+            }
+        } else {
+            if ((map.x() > 0 && map.x() < d->m_pixmap.width()) && (map.y() > 0 && map.y() < d->m_pixmap.height())) {
+                temporaryColPoints.append({map, d->m_cPoints.at(i).second});
+                d->m_drawnParticles++;
+            }
+            if (temporaryColPoints.size() == chunkSize || i >= (d->m_cPoints.size() - d->m_dArrayIterSize - 1)) {
+                fragmentedColPoints.append(temporaryColPoints);
+                temporaryColPoints.clear();
+            }
         }
     }
 
-    tmpCp.clear();
-
-    QFuture<QPixmap> future = QtConcurrent::mapped(cPoin, paintInChunk);
+    QFuture<QPixmap> future = QtConcurrent::mapped(fragmentedColPoints, paintInChunk);
 
     future.waitForFinished();
 
@@ -311,10 +350,27 @@ void Scatter2dChart::drawDataPoints()
     QPainter tempPainter;
 
     tempPainter.begin(&temp);
-    tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
-    for (auto it = future.constBegin(); it != future.constEnd(); it++) {
-        tempPainter.drawPixmap(temp.rect(), *it);
+
+    if (d->useBucketRender) {
+        for (int h = 0; h < bucketHNum; h++) {
+            const int hAbsPos = h * bucketWNum;
+            for (int w = 0; w < bucketWNum; w++) {
+                const int bucketAbsPos = hAbsPos + w;
+                const int orX = w * bucketSize;
+                const int orY = h * bucketSize;
+                const QRect bounds(orX, orY, bucketSize, bucketSize);
+                if (!future.resultAt(bucketAbsPos).isNull()) {
+                    tempPainter.drawPixmap(bounds, future.resultAt(bucketAbsPos));
+                }
+            }
+        }
+    } else {
+        tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
+        for (auto it = future.constBegin(); it != future.constEnd(); it++) {
+            tempPainter.drawPixmap(temp.rect(), *it);
+        }
     }
+
     tempPainter.end();
 
     d->m_painter.drawPixmap(d->m_pixmap.rect(), temp);
@@ -477,13 +533,14 @@ void Scatter2dChart::drawLabels()
     const double scaleHRatio = d->m_pixmap.height() / devicePixelRatioF();
     const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
-    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nOrigin: x:%1 | y:%2\nZoom: %3\%")
+    const QString legends = QString("Pixels: %4 (total)| %5 (%6, %7)\nOrigin: x:%1 | y:%2\nZoom: %3\%")
                                 .arg(QString::number(originX, 'f', 6),
                                      QString::number(originY, 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
                                      QString::number(d->m_cPoints.size()),
                                      QString::number(d->m_drawnParticles),
-                                     QString(d->isDownscaled ? "rendering..." : "rendered"));
+                                     QString(d->isDownscaled ? "rendering..." : "rendered"),
+                                     QString(d->useBucketRender ? "bucket" : "multipass"));
     d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
 
     d->m_painter.restore();
@@ -793,6 +850,13 @@ void Scatter2dChart::changePixmapSize()
         d->m_pixmapSize = setPixmapSize;
         d->m_offsetX = d->m_offsetX * (d->m_pixmapSize / currentPixmapSize);
         d->m_offsetY = d->m_offsetY * (d->m_pixmapSize / currentPixmapSize);
+
+        if (d->m_pixmapSize >= 2.0) {
+            d->useBucketRender = true;
+        } else {
+            d->useBucketRender = false;
+        }
+
         drawDownscaled(50);
         d->needUpdatePixmap = true;
         update();

@@ -33,6 +33,7 @@ public:
     QPixmap *getFullPixmap();
 
     typedef QPair<QVector3D, QColor> ColorPoint;
+    typedef QPair<QPointF, QColor> ColorPointMapped;
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
