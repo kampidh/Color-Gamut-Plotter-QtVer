@@ -87,7 +87,6 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
 
     QSize screenSize = screen()->size();
     d->m_container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
-    d->m_container->setMaximumSize(screenSize);
     d->m_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     d->m_container->setFocusPolicy(Qt::StrongFocus);
 
@@ -104,6 +103,9 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
 
     QPushButton *saveAsImgBtn = new QPushButton(this);
     saveAsImgBtn->setText(QStringLiteral("Save as image..."));
+
+    QPushButton *resetWindowsDim = new QPushButton(this);
+    resetWindowsDim->setText(QStringLiteral("Reset window size"));
 
     // detach these to prevent mucking 2d plot
     QPushButton *resetCamBtn = new QPushButton();
@@ -139,8 +141,11 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
     subLayout->addLayout(sub2Layout);
     sub2Layout->addWidget(resetCamBtn, 0, Qt::AlignCenter);
     sub2Layout->addWidget(saveAsImgBtn, 0, Qt::AlignCenter);
+    sub2Layout->addStretch();
+    sub2Layout->addWidget(resetWindowsDim, 0, Qt::AlignCenter);
 
     QObject::connect(saveAsImgBtn, &QPushButton::clicked, this, &ScatterDialog::saveButtonPress);
+    QObject::connect(resetWindowsDim, &QPushButton::clicked, this, &ScatterDialog::resetWinDimension);
 
     if (!d->m_is2d) {
         QObject::connect(resetCamBtn, &QPushButton::clicked, d->m_3dScatter, &Scatter3dChart::changePresetCamera);
@@ -155,6 +160,13 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
 ScatterDialog::~ScatterDialog()
 {
     delete d;
+}
+
+void ScatterDialog::resetWinDimension()
+{
+    QSize screenSize = screen()->size();
+    d->m_container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
+    resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
 }
 
 void ScatterDialog::saveButtonPress()

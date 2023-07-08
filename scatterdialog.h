@@ -19,6 +19,7 @@ public:
     ~ScatterDialog();
 
     void saveButtonPress();
+    void resetWinDimension();
 
 private:
     class Private;
