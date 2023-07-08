@@ -34,8 +34,8 @@ public:
     QString m_fName;
     QString m_profileName;
     QVector2D m_wtpt;
-    int m_plotType = 0;
-    int m_plotDensity = 0;
+    int m_plotType{0};
+    int m_plotDensity{0};
     Q3DScatter *m_graph;
     QWidget *m_container;
     Scatter3dChart *m_3dScatter;
@@ -86,7 +86,7 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
     }
 
     QSize screenSize = screen()->size();
-    d->m_container->setMinimumSize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.3));
+    d->m_container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
     d->m_container->setMaximumSize(screenSize);
     d->m_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     d->m_container->setFocusPolicy(Qt::StrongFocus);
@@ -148,6 +148,8 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
     } else {
         QObject::connect(resetCamBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
     }
+
+    resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
 }
 
 ScatterDialog::~ScatterDialog()

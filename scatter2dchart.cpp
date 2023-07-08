@@ -52,6 +52,10 @@ static const double spectral_chromaticity[81][3] = {
     {0.7347, 0.2653}, {0.7347, 0.2653} // 780 nm
 };
 
+// adaptive downsampling params, hardcoded
+static const int adaptiveIterMaxPixels = 50000;
+static const int adaptiveIterMaxRenderedPoints = 25000;
+
 class Q_DECL_HIDDEN Scatter2dChart::Private
 {
 public:
@@ -63,10 +67,11 @@ public:
     QPixmap m_pixmap;
     QVector<QVector3D> m_dOutGamut;
     QVector2D m_dWhitePoint;
-    int m_particleSize;
-    int m_particleSizeStored;
+    int m_particleSize{0};
+    int m_particleSizeStored{0};
     int m_drawnParticles{0};
     int m_neededParticles{0};
+    int adaptiveIterVal{0};
     double m_zoomRatio{1.1};
     double m_pixmapSize{1.0};
     int m_offsetX{100};
@@ -97,7 +102,7 @@ public:
     bool enableGrids{true};
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
-    bool enableStaticDownscale{true};
+    bool enableStaticDownscale{false};
     bool enableAA{false};
 
     QClipboard *m_clipb;
@@ -196,6 +201,12 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
         d->m_cPoints.append({dArray.at(i), dColor.at(i)});
         d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
     }
+
+    if (d->m_cPoints.size() > adaptiveIterMaxPixels) {
+        d->adaptiveIterVal = d->m_cPoints.size() / adaptiveIterMaxPixels;
+    } else {
+        d->adaptiveIterVal = 1;
+    }
 }
 
 void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint)
@@ -207,9 +218,8 @@ void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &d
 QPointF Scatter2dChart::mapPoint(QPointF xy)
 {
     // Maintain ascpect ratio, otherwise use width() on X
-    return QPointF(((xy.x() * d->m_zoomRatio) * (d->m_pixmap.height() / devicePixelRatioF()) + d->m_offsetX),
-                   ((d->m_pixmap.height() / devicePixelRatioF() - ((xy.y() * d->m_zoomRatio) * (d->m_pixmap.height() / devicePixelRatioF())))
-                    - d->m_offsetY));
+    return QPointF(((xy.x() * d->m_zoomRatio) * d->m_pixmap.height() + d->m_offsetX),
+                   ((d->m_pixmap.height() - ((xy.y() * d->m_zoomRatio) * d->m_pixmap.height())) - d->m_offsetY));
 }
 
 /*
@@ -217,14 +227,17 @@ QPointF Scatter2dChart::mapPoint(QPointF xy)
  * - Bucket, mostly slower but lighter in RAM
  * - Multipass, mostly faster but RAM heavy especially with large upscaling
  */
-static const int bucketUnscaleSize = 512;
+static const int bucketDefaultSize = 512;
+static const int bucketDownscaledSize = 1024;
 //static const int bucketPadding = 2;
+//static const int estimatedDownscale = 100;
+static const int maxPixelsBeforeBucket = 4000000;
 
 void Scatter2dChart::drawDataPoints()
 {
     // prepare window dimension
-    const double scaleHRatio = d->m_pixmap.height() / devicePixelRatioF();
-    const double scaleWRatio = d->m_pixmap.width() / devicePixelRatioF();
+    const double scaleHRatio = d->m_pixmap.height();
+    const double scaleWRatio = d->m_pixmap.width();
     const double originX = (d->m_offsetX / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double originY = (d->m_offsetY / scaleHRatio) / d->m_zoomRatio * -1.0;
     const double maxX = ((d->m_offsetX - scaleWRatio) / scaleHRatio) / d->m_zoomRatio * -1.0;
@@ -235,18 +248,25 @@ void Scatter2dChart::drawDataPoints()
 
     d->m_drawnParticles = 0;
 
-    if (!d->enableStaticDownscale) {
-        // only for dynamic downscaling, calculate how much points is needed for onscreen rendering
-        d->m_neededParticles = 0;
-        for (int i = 0; i < d->m_cPoints.size(); i++) {
-            if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
-                && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
-                d->m_neededParticles++;
-            }
+    // calculate an estimate how much points is needed for onscreen rendering
+    d->m_neededParticles = 0;
+    for (int i = 0; i < d->m_cPoints.size(); i += d->adaptiveIterVal) {
+        if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
+            && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
+            d->m_neededParticles++;
         }
     }
+    d->m_neededParticles = d->m_neededParticles * d->adaptiveIterVal;
 
-    const int bucketSize = bucketUnscaleSize;
+    const int pixmapPixSize = d->m_pixmap.width() * d->m_pixmap.height();
+
+    if (pixmapPixSize > maxPixelsBeforeBucket) {
+        d->useBucketRender = true;
+    } else {
+        d->useBucketRender = false;
+    }
+
+    const int bucketSize = (d->isDownscaled ? bucketDownscaledSize : bucketDefaultSize);
     const int bucketPadding = d->m_particleSize;
     const QSize workerDim = [&]() {
         if (d->useBucketRender) {
@@ -255,6 +275,7 @@ void Scatter2dChart::drawDataPoints()
         return d->m_pixmap.size();
     }();
 
+    // internal function for painting the chunks concurrently
     std::function<QPixmap(const QVector<ColorPointMapped> &)> paintInChunk = [&](const QVector<ColorPointMapped> &chunk) {
         if (chunk.isEmpty()) {
             return QPixmap();
@@ -273,7 +294,7 @@ void Scatter2dChart::drawDataPoints()
         tempPainterMap.setCompositionMode(QPainter::CompositionMode_Lighten);
 
         for (const ColorPointMapped &cp : chunk) {
-            if (d->m_dArrayIterSize > 1) {
+            if (d->isDownscaled) {
                 tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), 160));
             } else {
                 tempPainterMap.setBrush(cp.second);
@@ -294,8 +315,11 @@ void Scatter2dChart::drawDataPoints()
     QVector<QVector<ColorPointMapped>> fragmentedColPoints;
     QVector<ColorPointMapped> temporaryColPoints;
 
-    const int chunkSize = d->m_cPoints.size() / d->m_idealThrCount;
+    // multipass param
+    const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
+    const int chunkSize = d->m_neededParticles / thrCount;
 
+    // bucket param
     const int bucketWNum = std::ceil(d->m_pixmap.width() / (bucketSize * 1.0));
     const int bucketHNum = std::ceil(d->m_pixmap.height() / (bucketSize * 1.0));
     const int bucketTotalNum = bucketWNum * bucketHNum;
@@ -306,9 +330,11 @@ void Scatter2dChart::drawDataPoints()
 
     // divide to chunks
     for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
-        const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
         if (d->useBucketRender) {
+            const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
             bool isDataWritten = false;
+
+            // iterate over the buckets for each points
             for (int h = 0; h < bucketHNum; h++) {
                 const int hAbsPos = h * bucketWNum;
                 for (int w = 0; w < bucketWNum; w++) {
@@ -318,7 +344,9 @@ void Scatter2dChart::drawDataPoints()
                     const int maxX = orX + bucketSize;
                     const int maxY = orY + bucketSize;
                     if ((map.x() > orX - bucketPadding && map.x() < maxX + (bucketPadding * 2))
-                        && (map.y() > orY - bucketPadding && map.y() < maxY + (bucketPadding * 2))) {
+                        && (map.y() > orY - bucketPadding && map.y() < maxY + (bucketPadding * 2))
+                        && (map.x() > 0 && map.x() < scaleWRatio)
+                        && (map.y() > 0 && map.y() < scaleHRatio)) {
                         isDataWritten = true;
                         const QPointF mapAdj = QPointF(map.x() - orX, map.y() - orY);
                         fragmentedColPoints[bucketAbsPos].append({mapAdj, d->m_cPoints.at(i).second});
@@ -330,11 +358,19 @@ void Scatter2dChart::drawDataPoints()
                 d->m_drawnParticles++;
             }
         } else {
-            if ((map.x() > 0 && map.x() < d->m_pixmap.width()) && (map.y() > 0 && map.y() < d->m_pixmap.height())) {
-                temporaryColPoints.append({map, d->m_cPoints.at(i).second});
-                d->m_drawnParticles++;
+            // mutipass
+            if ((d->m_cPoints.at(i).first.x() > originX && d->m_cPoints.at(i).first.x() < maxX)
+                && (d->m_cPoints.at(i).first.y() > originY && d->m_cPoints.at(i).first.y() < maxY)) {
+                    const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
+                    temporaryColPoints.append({map, d->m_cPoints.at(i).second});
+                    d->m_drawnParticles++;
             }
-            if (temporaryColPoints.size() == chunkSize || i >= (d->m_cPoints.size() - d->m_dArrayIterSize - 1)) {
+
+            // add passes when a chunk is filled + end chunk
+            if (chunkSize > 0 && temporaryColPoints.size() == chunkSize) {
+                fragmentedColPoints.append(temporaryColPoints);
+                temporaryColPoints.clear();
+            } else if (i >= (d->m_cPoints.size() - d->m_dArrayIterSize)) {
                 fragmentedColPoints.append(temporaryColPoints);
                 temporaryColPoints.clear();
             }
@@ -851,12 +887,6 @@ void Scatter2dChart::changePixmapSize()
         d->m_offsetX = d->m_offsetX * (d->m_pixmapSize / currentPixmapSize);
         d->m_offsetY = d->m_offsetY * (d->m_pixmapSize / currentPixmapSize);
 
-        if (d->m_pixmapSize >= 2.0) {
-            d->useBucketRender = true;
-        } else {
-            d->useBucketRender = false;
-        }
-
         drawDownscaled(50);
         d->needUpdatePixmap = true;
         update();
@@ -885,7 +915,7 @@ void Scatter2dChart::drawDownscaled(int delayms)
 
     // dynamic downscaling
     if (!d->enableStaticDownscale) {
-        const int iterSize = d->m_neededParticles / (50000 /* / qRound(d->m_pixmapSize)*/); // 50k maximum particles
+        const int iterSize = d->m_neededParticles / adaptiveIterMaxRenderedPoints; // 50k maximum particles
         if (iterSize > 1) {
             d->m_dArrayIterSize = iterSize;
             d->m_particleSize = 4 * d->m_pixmapSize;
