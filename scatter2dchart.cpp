@@ -71,6 +71,7 @@ public:
     int m_particleSizeStored{0};
     int m_drawnParticles{0};
     int m_neededParticles{0};
+    int m_pointOpacity{255};
     int adaptiveIterVal{0};
     double m_zoomRatio{1.1};
     double m_pixmapSize{1.0};
@@ -127,10 +128,10 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->setOrigin = new QAction("Set origin...");
     connect(d->setOrigin, &QAction::triggered, this, &Scatter2dChart::changeOrigin);
 
-    d->copyOrigAndZoom = new QAction("Copy origin and zoom");
+    d->copyOrigAndZoom = new QAction("Copy plot state");
     connect(d->copyOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::copyOrigAndZoom);
 
-    d->pasteOrigAndZoom = new QAction("Paste origin and zoom");
+    d->pasteOrigAndZoom = new QAction("Paste plot state");
     connect(d->pasteOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
 
     d->drawLabels = new QAction("Draw labels");
@@ -199,8 +200,10 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
 
     for (int i = 0; i < dArray.size(); i++) {
         d->m_cPoints.append({dArray.at(i), dColor.at(i)});
-        d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
+//        d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
     }
+
+    d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
 
     if (d->m_cPoints.size() > adaptiveIterMaxPixels) {
         d->adaptiveIterVal = d->m_cPoints.size() / adaptiveIterMaxPixels;
@@ -297,7 +300,7 @@ void Scatter2dChart::drawDataPoints()
             if (d->isDownscaled) {
                 tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), 160));
             } else {
-                tempPainterMap.setBrush(cp.second);
+                tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), d->m_pointOpacity));
             }
 
             if (d->enableAA && !d->isDownscaled) {
@@ -778,10 +781,12 @@ void Scatter2dChart::copyOrigAndZoom()
     const double currentXOffset = (d->m_offsetX / scaleRatio) / d->m_zoomRatio * -1.0;
     const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio * -1.0;
 
-    const QString clipText = QString("QtGamutPlotter:%1;%2;%3")
+    const QString clipText = QString("QtGamutPlotter:%1;%2;%3;%4;%5")
                                  .arg(QString::number(currentZoom, 'f', 3),
                                       QString::number(currentXOffset, 'f', 8),
-                                      QString::number(currentYOffset, 'f', 8));
+                                      QString::number(currentYOffset, 'f', 8),
+                                      QString::number(d->m_pointOpacity),
+                                      QString::number(d->m_particleSizeStored));
 
     d->m_clipb->setText(clipText);
 }
@@ -794,7 +799,7 @@ void Scatter2dChart::pasteOrigAndZoom()
         const QString cleanClip = fromClip.replace("QtGamutPlotter:", "");
         const QStringList parsed = cleanClip.split(";");
 
-        if (parsed.size() == 3) {
+        if (parsed.size() == 5) {
             const double setZoom = parsed.at(0).toDouble() / 100.0;
             if (setZoom > 0.8 && setZoom < 200.0) {
                 d->m_zoomRatio = setZoom;
@@ -802,6 +807,17 @@ void Scatter2dChart::pasteOrigAndZoom()
 
             const double setX = parsed.at(1).toDouble() * -1.0;
             const double setY = parsed.at(2).toDouble() * -1.0;
+
+            const int setAlpha = parsed.at(3).toInt();
+            const int setSize = parsed.at(4).toInt();
+
+            if (setAlpha >= 0 && setAlpha < 256) {
+                d->m_pointOpacity = setAlpha;
+            }
+
+            if (setSize >= 1 && setSize < 11) {
+                d->m_particleSizeStored = setSize;
+            }
 
             if ((setX > -1.0 && setX < 1.0) && (setY > -1.0 && setY < 1.0)) {
                 const double setXToVal = (setX * d->m_zoomRatio) * scaleRatio;
@@ -833,7 +849,8 @@ void Scatter2dChart::changeProperties()
 
 void Scatter2dChart::changeAlpha()
 {
-    const double currentAlpha = d->m_cPoints.at(0).second.alphaF();
+//    const double currentAlpha = d->m_cPoints.at(0).second.alphaF();
+    const double currentAlpha = d->m_pointOpacity / 255.0;
     bool isAlphaOkay(false);
     const double setAlpha = QInputDialog::getDouble(this,
                                                     "Set alpha",
@@ -846,9 +863,11 @@ void Scatter2dChart::changeAlpha()
                                                     Qt::WindowFlags(),
                                                     0.1);
     if (isAlphaOkay) {
-        for (ColorPoint &p : d->m_cPoints) {
-            p.second.setAlphaF(setAlpha);
-        }
+//        for (ColorPoint &p : d->m_cPoints) {
+//            p.second.setAlphaF(setAlpha);
+//        }
+
+        d->m_pointOpacity = std::round(setAlpha * 255.0);
 
         drawDownscaled(50);
         d->needUpdatePixmap = true;
