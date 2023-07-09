@@ -41,22 +41,26 @@ public:
     Scatter3dChart *m_3dScatter;
     Scatter2dChart *m_2dScatter;
     bool m_is2d{false};
+    bool m_isFullscreen{false};
+    QSize m_lastSize;
 };
 
-ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fName, int plotType, int plotDensity)
+ScatterDialog::ScatterDialog(ImageParserSC &inImage, QString fName, int plotType, int plotDensity, QWidget *parent)
     : QWidget(parent)
     , d(new Private)
 {
+    setupUi(this);
+
+    setAttribute(Qt::WA_DeleteOnClose, true);
+    setWindowTitle(QStringLiteral("Plotting result"));
+
     if (plotType == 2) {
         d->m_is2d = true;
     }
     d->m_fName = fName;
-    //    d->m_inImage = inImage;
     d->m_plotType = plotType;
     d->m_plotDensity = plotDensity;
 
-    //    ImageParserSC parsedImg;
-    //    parsedImg.inputFile(inImage, d->m_plotDensity);
     QVector<QVector3D> outxyY = inImage.getXYYArray();
     QVector<QVector3D> outGamut = inImage.getOuterGamut();
     QVector<QColor> outQC = inImage.getQColorArray();
@@ -67,8 +71,7 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
     if (!d->m_is2d) {
         d->m_3dScatter = new Scatter3dChart();
         d->m_3dScatter->addDataPoints(outxyY, outQC, outGamut, isSrgb, d->m_plotType);
-
-        d->m_container = QWidget::createWindowContainer(d->m_3dScatter);
+        layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
 
         if (!d->m_3dScatter->hasContext()) {
             QMessageBox msgBox;
@@ -82,41 +85,20 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
         d->m_2dScatter = new Scatter2dChart();
         d->m_2dScatter->addDataPoints(outxyY, outQC, 2);
         d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
-        d->m_container = d->m_2dScatter;
+        layout()->replaceWidget(container, d->m_2dScatter);
+        orthogonalViewChk->setVisible(false);
     }
 
     QSize screenSize = screen()->size();
-    d->m_container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
-    d->m_container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    d->m_container->setFocusPolicy(Qt::StrongFocus);
 
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    QVBoxLayout *subLayout = new QVBoxLayout();
-    QHBoxLayout *sub2Layout = new QHBoxLayout();
-
-    mainLayout->addWidget(d->m_container, 1);
-
-    mainLayout->addLayout(subLayout);
-
-    this->setAttribute(Qt::WA_DeleteOnClose, true);
-    this->setWindowTitle(QStringLiteral("Plotting result"));
-
-    QPushButton *saveAsImgBtn = new QPushButton(this);
-    saveAsImgBtn->setText(QStringLiteral("Save as image..."));
-
-    QPushButton *resetWindowsDim = new QPushButton(this);
-    resetWindowsDim->setText(QStringLiteral("Reset window size"));
-
-    // detach these to prevent mucking 2d plot
-    QPushButton *resetCamBtn = new QPushButton();
     if (!d->m_is2d) {
-        resetCamBtn->setText(QStringLiteral("Top-down camera"));
+        rstViewBtn->setText(QStringLiteral("Top-down camera"));
     } else {
-        resetCamBtn->setText(QStringLiteral("Reset view"));
+        rstViewBtn->setText(QStringLiteral("Reset view"));
     }
-    QCheckBox *orthoChk = new QCheckBox();
-    orthoChk->setChecked(false);
-    orthoChk->setText("Orthogonal projection");
+
+    orthogonalViewChk->setChecked(false);
+    orthogonalViewChk->setText("Orthogonal projection");
 
     const QString imLabel = [&]() {
         QString tmp = "<b>File name:</b> " + d->m_fName + "<br><b>Profile name:</b> ";
@@ -130,28 +112,17 @@ ScatterDialog::ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fN
         tmp += "x: " + QString::number(wtpt.x()) + " | y: " + QString::number(wtpt.y());
         return tmp;
     }();
-    QLabel *labelName = new QLabel(this);
-    labelName->setTextFormat(Qt::RichText);
-    labelName->setText(imLabel);
-    subLayout->addWidget(labelName, 0, Qt::AlignLeft);
-    if (!d->m_is2d) {
-        subLayout->addWidget(orthoChk, 0, Qt::AlignLeft);
-    }
 
-    subLayout->addLayout(sub2Layout);
-    sub2Layout->addWidget(resetCamBtn, 0, Qt::AlignCenter);
-    sub2Layout->addWidget(saveAsImgBtn, 0, Qt::AlignCenter);
-    sub2Layout->addStretch();
-    sub2Layout->addWidget(resetWindowsDim, 0, Qt::AlignCenter);
+    imgDetailLbl->setText(imLabel);
 
-    QObject::connect(saveAsImgBtn, &QPushButton::clicked, this, &ScatterDialog::saveButtonPress);
-    QObject::connect(resetWindowsDim, &QPushButton::clicked, this, &ScatterDialog::resetWinDimension);
+    connect(saveImageBtn, &QPushButton::clicked, this, &ScatterDialog::savePlotImage);
+    connect(rstWindowBtn, &QPushButton::clicked, this, &ScatterDialog::resetWinDimension);
 
     if (!d->m_is2d) {
-        QObject::connect(resetCamBtn, &QPushButton::clicked, d->m_3dScatter, &Scatter3dChart::changePresetCamera);
-        QObject::connect(orthoChk, &QCheckBox::clicked, d->m_3dScatter, &Scatter3dChart::setOrthogonal);
+        connect(rstViewBtn, &QPushButton::clicked, d->m_3dScatter, &Scatter3dChart::changePresetCamera);
+        connect(orthogonalViewChk, &QCheckBox::clicked, d->m_3dScatter, &Scatter3dChart::setOrthogonal);
     } else {
-        QObject::connect(resetCamBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
+        connect(rstViewBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
     }
 
     resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
@@ -165,11 +136,11 @@ ScatterDialog::~ScatterDialog()
 void ScatterDialog::resetWinDimension()
 {
     QSize screenSize = screen()->size();
-    d->m_container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
+    container->setMinimumSize(QSize(screenSize.height() / 3.0, screenSize.height() / 3.0));
     resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
 }
 
-void ScatterDialog::saveButtonPress()
+void ScatterDialog::savePlotImage()
 {
     QFileInfo info(d->m_fName);
     QString infoDir = info.absolutePath();
@@ -193,15 +164,9 @@ void ScatterDialog::saveButtonPress()
         chTitle += "None (Assumed as sRGB)";
     }
 
-    // QImage out = d->m_3dScatter->renderToImage(8);
-
-    // QPixmap rend;
     QImage out;
 
     if (!d->m_is2d) {
-        // rend = QPixmap(d->m_container->size());
-        // d->m_container->render(&rend);
-        // out = rend.toImage();
         out = d->m_3dScatter->renderToImage(8);
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
@@ -229,5 +194,27 @@ void ScatterDialog::saveButtonPress()
     } else {
         QMessageBox msg;
         msg.warning(this, "Error", "Image cannot be saved!");
+    }
+}
+
+void ScatterDialog::keyPressEvent(QKeyEvent *event)
+{
+    // fullscreen only for 2D since I don't know how to exit 3D fullscreen yet uwu
+    if ((event->key() == Qt::Key_F11) && d->m_is2d) {
+        if (!d->m_isFullscreen) {
+            d->m_lastSize = size();
+            d->m_isFullscreen = true;
+            guiGroup->setVisible(false);
+            layout()->setMargin(0);
+            setWindowState(Qt::WindowFullScreen);
+        } else {
+            d->m_isFullscreen = false;
+            setWindowState(Qt::WindowNoState);
+            layout()->setMargin(9);
+            guiGroup->setVisible(true);
+            resize(d->m_lastSize);
+        }
+    } else if (event->key() == Qt::Key_F12) {
+        savePlotImage();
     }
 }

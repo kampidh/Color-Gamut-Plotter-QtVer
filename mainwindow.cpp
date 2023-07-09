@@ -177,7 +177,7 @@ void MainWindow::goPlot()
     parsedImage.inputFile(imgs, plotDensity);
 #endif
 
-    d->sc = new ScatterDialog(0, parsedImage, fileName, plotTypeIndex, plotDensity);
+    d->sc = new ScatterDialog(parsedImage, fileName, plotTypeIndex, plotDensity);
     d->sc->show();
 
     const QPoint midpos(d->sc->frameSize().width() / 2, d->sc->frameSize().height() / 2);

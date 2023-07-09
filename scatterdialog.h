@@ -7,19 +7,22 @@
 #ifndef SCATTERDIALOG_H
 #define SCATTERDIALOG_H
 
+#include "./ui_scatterdialog.h"
 #include "imageparsersc.h"
 #include <QWidget>
 
-class ScatterDialog : public QWidget
+class ScatterDialog : public QWidget, public Ui::ScatterDialog
 {
     Q_OBJECT
 public:
-    //    explicit ScatterDialog(QWidget *parent, const QImage &inImage, QString fName, int plotType, int plotDensity);
-    explicit ScatterDialog(QWidget *parent, ImageParserSC &inImage, QString fName, int plotType, int plotDensity);
+    ScatterDialog(ImageParserSC &inImage, QString fName, int plotType, int plotDensity, QWidget *parent = nullptr);
     ~ScatterDialog();
 
-    void saveButtonPress();
+    void savePlotImage();
     void resetWinDimension();
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     class Private;

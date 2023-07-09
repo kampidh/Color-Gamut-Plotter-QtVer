@@ -39,6 +39,7 @@ set(PROJECT_SOURCES
         scatter3dchart.cpp
         scatterdialog.h
         scatterdialog.cpp
+        scatterdialog.ui
         scatter2dchart.h
         scatter2dchart.cpp
         imageparsersc.h
