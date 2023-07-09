@@ -35,6 +35,13 @@ public:
     typedef QPair<QVector3D, QColor> ColorPoint;
     typedef QPair<QPointF, QColor> ColorPointMapped;
 
+    typedef struct {
+        double originX;
+        double originY;
+        double maxX;
+        double maxY;
+    } RenderBounds;
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *) override;
@@ -54,6 +61,7 @@ private slots:
     void changeAlpha();
     void changeParticleSize();
     void changePixmapSize();
+    void changeBgColor();
 
 private:
     void drawDataPoints();
@@ -65,7 +73,11 @@ private:
     void doUpdate();
     void whenScrollTimerEnds();
     void drawDownscaled(int delayms);
+
     QPointF mapPoint(QPointF xy);
+    QPointF mapScreenPoint(QPointF xy);
+    double oneUnitInPx();
+    RenderBounds getRenderBounds();
 
     class Private;
     Private *const d{nullptr};
