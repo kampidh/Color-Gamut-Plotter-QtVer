@@ -620,7 +620,7 @@ void Scatter2dChart::drawLabels()
         d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
     }
     d->m_painter.setPen(QPen(Qt::lightGray));
-    d->m_labelFont.setPointSize(std::pow(d->m_pixmapSize, 2) * 11);
+    d->m_labelFont.setPixelSize(d->m_pixmapSize * 16);
     d->m_painter.setFont(d->m_labelFont);
     const QPointF centerXY =
         mapScreenPoint({static_cast<double>(width() / 2.0 - 0.5), static_cast<double>(height() / 2 - 0.5)});
