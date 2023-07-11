@@ -62,6 +62,7 @@ private slots:
     void changeParticleSize();
     void changePixmapSize();
     void changeBgColor();
+    void saveSlicesAsImage();
 
 private:
     void drawDataPoints();

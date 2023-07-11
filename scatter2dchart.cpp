@@ -15,23 +15,24 @@
  **/
 
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QColorDialog>
+#include <QDebug>
+#include <QFileDialog>
+#include <QFuture>
 #include <QInputDialog>
 #include <QMenu>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QProgressDialog>
 #include <QTimer>
 #include <QVector3D>
-#include <cmath>
-#include <QColorDialog>
-
 #include <QtConcurrent>
-#include <QFuture>
 
-#include <QApplication>
-#include <QClipboard>
-
-#include <QDebug>
+#include <algorithm>
+#include <cmath>
 
 #include "scatter2dchart.h"
 
@@ -65,6 +66,7 @@ public:
     bool isDownscaled{false};
     bool useBucketRender{false};
     bool keepCentered{false};
+    bool renderSlices{false};
     QPainter m_painter;
     QPixmap m_pixmap;
     QVector<QVector3D> m_dOutGamut;
@@ -75,6 +77,10 @@ public:
     int m_neededParticles{0};
     int m_pointOpacity{255};
     int adaptiveIterVal{0};
+    int m_numberOfSlices{0};
+    int m_slicePos{0};
+    double m_minY{0.0};
+    double m_maxY{1.0};
     double m_zoomRatio{1.1};
     double m_pixmapSize{1.0};
     double m_offsetX{100};
@@ -103,6 +109,7 @@ public:
     QAction *setParticleSize;
     QAction *setPixmapSize;
     QAction *setBgColor;
+    QAction *saveSlicesAsImage;
 
     bool enableLabels{true};
     bool enableGrids{true};
@@ -123,7 +130,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->m_scrollTimer->setSingleShot(true);
     connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
 
-    d->m_labelFont = QFont("Courier", 11, QFont::Medium);
+    d->m_labelFont = QFont("Courier New", 11, QFont::Medium);
     d->m_bgColor = Qt::black;
 
     d->m_clipb = QApplication::clipboard();
@@ -183,6 +190,9 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->setBgColor = new QAction("Set background color...");
     connect(d->setBgColor, &QAction::triggered, this, &Scatter2dChart::changeBgColor);
 
+    d->saveSlicesAsImage = new QAction("Save Y slices as image...");
+    connect(d->saveSlicesAsImage, &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
+
     if (QThread::idealThreadCount() > 1) {
         d->m_idealThrCount = QThread::idealThreadCount();
     } else {
@@ -211,6 +221,16 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
         d->m_cPoints.append({dArray.at(i), dColor.at(i)});
 //        d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
     }
+
+    std::vector<double> minMaxY;
+    for (const auto &cp : qAsConst(d->m_cPoints)) {
+        minMaxY.emplace_back(cp.first.z());
+    }
+    const double min = *std::min_element(minMaxY.cbegin(), minMaxY.cend());
+    const double max = *std::max_element(minMaxY.cbegin(), minMaxY.cend());
+    d->m_minY = min;
+    d->m_maxY = max;
+    qDebug() << min << max;
 
     d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
 
@@ -362,6 +382,16 @@ void Scatter2dChart::drawDataPoints()
 
     // divide to chunks
     for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
+        if (d->renderSlices) {
+            const double sliceRange = d->m_maxY - d->m_minY;
+            const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
+            const double currentPos = ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange) - d->m_minY;
+            const double minY = currentPos - sliceHalfSize;
+            const double maxY = currentPos + sliceHalfSize;
+            if (d->m_cPoints.at(i).first.z() < minY || d->m_cPoints.at(i).first.z() > maxY) {
+                continue;
+            }
+        }
         if (d->useBucketRender) {
             const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
             bool isDataWritten = false;
@@ -630,6 +660,18 @@ void Scatter2dChart::drawLabels()
     d->m_painter.setFont(d->m_labelFont);
     const QPointF centerXY =
         mapScreenPoint({static_cast<double>(width() / 2.0 - 0.5), static_cast<double>(height() / 2 - 0.5)});
+
+    QString fullLegends;
+    if (d->renderSlices) {
+        const double sliceRange = d->m_maxY - d->m_minY;
+        const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
+        const double currentPos = ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange) - d->m_minY;
+
+        const QString slicesPos =
+            QString("Y: %1(±%2)\n").arg(QString::number(currentPos), QString::number(sliceHalfSize));
+
+        fullLegends += slicesPos;
+    }
     const QString legends = QString("Pixels: %4 (total)| %5 (%6, %7)\nCenter: x:%1 | y:%2\nZoom: %3\%")
                                 .arg(QString::number(centerXY.x(), 'f', 6),
                                      QString::number(centerXY.y(), 'f', 6),
@@ -638,7 +680,10 @@ void Scatter2dChart::drawLabels()
                                      QString::number(d->m_drawnParticles),
                                      QString(d->isDownscaled ? "rendering..." : "rendered"),
                                      QString(d->useBucketRender ? "bucket" : "progressive"));
-    d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
+
+    fullLegends += legends;
+
+    d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, fullLegends);
 
     d->m_painter.restore();
 }
@@ -696,6 +741,10 @@ void Scatter2dChart::paintEvent(QPaintEvent *)
 
 void Scatter2dChart::resizeEvent(QResizeEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     QWidget::resizeEvent(event);
     // downscale
     if (!d->m_pixmap.isNull()) {
@@ -708,6 +757,10 @@ void Scatter2dChart::resizeEvent(QResizeEvent *event)
 
 void Scatter2dChart::wheelEvent(QWheelEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     const QPoint numDegrees = event->angleDelta();
 
     // exponential zooming, so that it will feel linear especially
@@ -743,6 +796,10 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
 
 void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
         d->m_lastPos = event->pos();
     }
@@ -750,6 +807,10 @@ void Scatter2dChart::mousePressEvent(QMouseEvent *event)
 
 void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     if (event->buttons() & Qt::LeftButton) {
         d->isMouseHold = true;
         drawDownscaled(500);
@@ -770,6 +831,10 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
 
 void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     if ((event->button() == Qt::LeftButton) && d->isMouseHold) {
         d->isMouseHold = false;
         drawDownscaled(10);
@@ -780,6 +845,10 @@ void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
 
 void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
 {
+    if (d->renderSlices) {
+        event->ignore();
+        return;
+    }
     const QPointF relMousePos =
         mapScreenPoint({static_cast<double>(event->pos().x()), static_cast<double>(event->pos().y())});
     const QString sizePos = QString("Cursor: x: %1 | y: %2 | %3\%")
@@ -810,6 +879,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addMenu(&extra);
     extra.addAction(d->setPixmapSize);
     extra.addAction(d->setStaticDownscale);
+    extra.addAction(d->saveSlicesAsImage);
 
     menu.exec(event->globalPos());
 }
@@ -1036,6 +1106,70 @@ void Scatter2dChart::drawDownscaled(int delayms)
         }
         d->m_particleSize = 4 * d->m_pixmapSize;
     }
+}
+
+void Scatter2dChart::saveSlicesAsImage()
+{
+    const QString tmpFileName = QFileDialog::getSaveFileName(this,
+                                                             tr("Save plot as image"),
+                                                             "",
+                                                             tr("Portable Network Graphics (*.png)"));
+    if (tmpFileName.isEmpty()) {
+        return;
+    }
+    QString fileNameTrimmed = tmpFileName.chopped(4);
+
+    bool isNumSlicesOkay;
+    const int numSlices = QInputDialog::getInt(this,
+                                               "Set number of slices",
+                                               "Total slices",
+                                               10,
+                                               5,
+                                               100,
+                                               1,
+                                               &isNumSlicesOkay);
+    if (!isNumSlicesOkay) {
+        return;
+    }
+
+    d->renderSlices = true;
+    d->m_numberOfSlices = numSlices;
+
+    QProgressDialog pDial;
+    pDial.setMinimum(0);
+    pDial.setMaximum(numSlices);
+    pDial.setLabelText("Rendering slices...");
+    pDial.setCancelButtonText("Stop");
+
+    bool isCancelled = false;
+    connect(&pDial, &QProgressDialog::canceled, [&isCancelled] {
+        isCancelled = true;
+    });
+
+    pDial.show();
+
+    for (int i = 0; i < numSlices; i++) {
+        QCoreApplication::processEvents();
+        if (isCancelled) {
+            d->renderSlices = false;
+            return;
+        }
+
+        d->m_slicePos = i;
+        doUpdate();
+
+        const QString outputFile = fileNameTrimmed + tr("_") + QString::number(i).rightJustified(4, '0') + tr(".png");
+        QImage out(d->m_pixmap.toImage());
+        out.save(outputFile);
+        qDebug() << "Ping" << outputFile;
+        pDial.setValue(i);
+    }
+
+    d->renderSlices = false;
+
+    drawDownscaled(20);
+    d->needUpdatePixmap = true;
+    update();
 }
 
 void Scatter2dChart::resetCamera()
