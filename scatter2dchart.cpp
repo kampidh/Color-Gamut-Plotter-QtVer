@@ -260,7 +260,7 @@ Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds()
 /*
  * Data point rendering modes:
  * - Bucket, mostly slower but lighter in RAM
- * - Multipass, mostly faster but RAM heavy especially with large upscaling
+ * - Progressive, mostly faster but RAM heavy especially with large upscaling
  */
 static const int bucketDefaultSize = 512;
 static const int bucketDownscaledSize = 1024;
@@ -347,7 +347,7 @@ void Scatter2dChart::drawDataPoints()
     QVector<QVector<ColorPointMapped>> fragmentedColPoints;
     QVector<ColorPointMapped> temporaryColPoints;
 
-    // multipass param
+    // progressive param
     const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
     const int chunkSize = d->m_neededParticles / thrCount;
 
@@ -407,6 +407,12 @@ void Scatter2dChart::drawDataPoints()
                 temporaryColPoints.clear();
             }
         }
+    }
+
+    // add passes if any of the point is skipped on progressive
+    if (!d->useBucketRender && fragmentedColPoints.isEmpty() && !temporaryColPoints.isEmpty()) {
+        fragmentedColPoints.append(temporaryColPoints);
+        temporaryColPoints.clear();
     }
 
     QFuture<QPixmap> future = QtConcurrent::mapped(fragmentedColPoints, paintInChunk);
@@ -631,7 +637,7 @@ void Scatter2dChart::drawLabels()
                                      QString::number(d->m_cPoints.size()),
                                      QString::number(d->m_drawnParticles),
                                      QString(d->isDownscaled ? "rendering..." : "rendered"),
-                                     QString(d->useBucketRender ? "bucket" : "multipass"));
+                                     QString(d->useBucketRender ? "bucket" : "progressive"));
     d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, legends);
 
     d->m_painter.restore();
