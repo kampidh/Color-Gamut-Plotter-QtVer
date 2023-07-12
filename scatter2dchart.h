@@ -76,10 +76,10 @@ private:
     void whenScrollTimerEnds();
     void drawDownscaled(int delayms);
 
-    QPointF mapPoint(QPointF xy);
-    QPointF mapScreenPoint(QPointF xy);
-    double oneUnitInPx();
-    RenderBounds getRenderBounds();
+    QPointF mapPoint(QPointF xy) const;
+    QPointF mapScreenPoint(QPointF xy) const;
+    double oneUnitInPx() const;
+    RenderBounds getRenderBounds() const;
 
     class Private;
     Private *const d{nullptr};

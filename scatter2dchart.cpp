@@ -153,6 +153,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     d->drawMacAdamEllipses = new QAction("Draw MacAdam Ellipses");
+    d->drawMacAdamEllipses->setToolTip("Draw in both normal, and 10x size as depicted in MacAdam's paper.");
     d->drawMacAdamEllipses->setCheckable(true);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
     connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -236,25 +237,25 @@ void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &d
     d->m_dWhitePoint = dWhitePoint;
 }
 
-QPointF Scatter2dChart::mapPoint(QPointF xy)
+QPointF Scatter2dChart::mapPoint(QPointF xy) const
 {
     // Maintain ascpect ratio, otherwise use width() on X
     return QPointF(((xy.x() * d->m_zoomRatio) * d->m_pixmap.height() + d->m_offsetX),
                    ((d->m_pixmap.height() - ((xy.y() * d->m_zoomRatio) * d->m_pixmap.height())) - d->m_offsetY));
 }
 
-QPointF Scatter2dChart::mapScreenPoint(QPointF xy)
+QPointF Scatter2dChart::mapScreenPoint(QPointF xy) const
 {
     return QPointF(((d->m_offsetX - (xy.x() / devicePixelRatioF()) * d->m_pixmapSize) / (d->m_pixmap.height() * 1.0)) / d->m_zoomRatio * -1.0,
                    ((d->m_offsetY - ((height() / devicePixelRatioF()) - (xy.y() / devicePixelRatioF())) * d->m_pixmapSize) / (d->m_pixmap.height() * 1.0)) / d->m_zoomRatio * -1.0);
 }
 
-double Scatter2dChart::oneUnitInPx()
+double Scatter2dChart::oneUnitInPx() const
 {
     return (static_cast<double>(d->m_pixmap.height()) * d->m_zoomRatio);
 }
 
-Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds()
+Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds() const
 {
     const double scaleH = d->m_pixmap.height();
     const double scaleW = d->m_pixmap.width();
@@ -491,6 +492,7 @@ void Scatter2dChart::drawSpectralLine()
 {
     d->m_painter.save();
     d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
     QPen pn;
     pn.setColor(QColor(64, 64, 64));
     pn.setWidth(1);
@@ -519,7 +521,11 @@ void Scatter2dChart::drawSrgbTriangle()
 {
     d->m_painter.save();
     d->m_painter.setRenderHint(QPainter::Antialiasing);
-    d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    if (d->m_bgColor == Qt::black) {
+        d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    } else {
+        d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
+    }
     QPen pn;
     pn.setColor(QColor(128, 128, 128, 128));
     pn.setWidth(1);
@@ -546,7 +552,11 @@ void Scatter2dChart::drawGamutTriangleWP()
 {
     d->m_painter.save();
     d->m_painter.setRenderHint(QPainter::Antialiasing);
-    d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    if (d->m_bgColor == Qt::black) {
+        d->m_painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    } else {
+        d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
+    }
 
     QPen pn;
     pn.setColor(QColor(128, 0, 0, 128));
@@ -580,12 +590,12 @@ void Scatter2dChart::drawMacAdamEllipses()
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
 
     QPen pn;
-    pn.setColor(QColor(64, 64, 64, 128));
+    pn.setColor(QColor(128, 128, 128, 128));
     pn.setWidth(2);
     pn.setStyle(Qt::DotLine);
 
     QPen pnInner;
-    pnInner.setColor(QColor(128, 128, 128, 128));
+    pnInner.setColor(QColor(200, 200, 200, 128));
     pnInner.setWidth(2);
 
     d->m_painter.setBrush(Qt::transparent);
