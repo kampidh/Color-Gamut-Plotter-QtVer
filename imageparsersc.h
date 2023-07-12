@@ -12,6 +12,7 @@
 #include <lcms2.h>
 
 #include "imageformats.h"
+#include "plot_typedefs.h"
 
 class ImageParserSC
 {
@@ -19,13 +20,13 @@ public:
     ImageParserSC();
     ~ImageParserSC();
 
-    void inputFile(const QImage &imgIn, int size);
-    void inputFile(const QByteArray &rawData, const QByteArray &iccData, ImageColorDepthID depthId, QSize imgSize, int size);
+    void inputFile(const QImage &imgIn, int size, QVector<ColorPoint> *outCp);
+    void inputFile(const QByteArray &rawData, const QByteArray &iccData, ImageColorDepthID depthId, QSize imgSize, int size, QVector<ColorPoint> *outCp);
     QString getProfileName();
     QVector2D getWhitePointXY();
-    QVector<QVector3D> getXYYArray();
-    QVector<QVector3D> getOuterGamut();
-    QVector<QColor> getQColorArray();
+    QVector<ImageXYZDouble> *getXYYArray() const;
+    QVector<ImageXYZDouble> *getOuterGamut() const;
+    QVector<QColor> *getQColorArray() const;
 
     bool isMatchSrgb();
 

@@ -69,11 +69,7 @@ Scatter3dChart::~Scatter3dChart()
     delete d;
 }
 
-void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
-                                   QVector<QColor> &dColor,
-                                   QVector<QVector3D> &dGamut,
-                                   bool isSrgb,
-                                   int type)
+void Scatter3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZDouble> &dGamut, bool isSrgb, int type)
 {
     cmsSetAdaptationState(0.0);
 
@@ -83,7 +79,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
     const cmsHTRANSFORM xform =
         cmsCreateTransform(hsRGB, TYPE_RGB_DBL, hsXYZ, TYPE_XYZ_DBL, INTENT_ABSOLUTE_COLORIMETRIC, 0);
 
-    QVector<QVector3D> gamutsRGB;
+    QVector<ImageXYZDouble> gamutsRGB;
 
     for (int i = 0; i < 256; i++) {
         const QVector<QColor> gmt = {QColor(i, 255 - i, 0), QColor(0, i, 255 - i), QColor(255 - i, 0, i)};
@@ -93,7 +89,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
             const double pix[3] = {clr.redF(), clr.greenF(), clr.blueF()};
             cmsDoTransform(xform, &pix, &bufXYZ, 1);
             cmsXYZ2xyY(&bufXYY, &bufXYZ);
-            gamutsRGB.append(QVector3D(bufXYY.x, bufXYY.y, bufXYY.Y));
+            gamutsRGB.append({bufXYY.x, bufXYY.y, bufXYY.Y});
         }
     }
 
@@ -119,9 +115,9 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
         uint32_t progDivider = dArray.size() / 10;
         for (uint32_t i = 0; i < dArray.size(); i++) {
             if (type > 0) {
-                inputRGBDataVec(dArray[i], dColor[i], 0.05, false);
+                inputRGBDataVec(dArray[i].first, dArray[i].second, 0.05, false);
             } else {
-                inputMonoDataVec(dArray[i], series, false);
+                inputMonoDataVec(dArray[i].first, series, false);
             }
             progress++;
             if (progress % progDivider == 0) {
@@ -206,7 +202,7 @@ void Scatter3dChart::addDataPoints(QVector<QVector3D> &dArray,
     cmsDeleteTransform(xform);
 }
 
-void Scatter3dChart::inputRGBDataVec(QVector3D &xyy, QColor col, float size, bool flatten)
+void Scatter3dChart::inputRGBDataVec(ImageXYZDouble &xyy, QColor col, float size, bool flatten)
 {
     QScatter3DSeries *series = new QScatter3DSeries();
     series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
@@ -217,7 +213,7 @@ void Scatter3dChart::inputRGBDataVec(QVector3D &xyy, QColor col, float size, boo
     QScatterDataItem item;
 
     // Don't plot if NaN exists
-    if (xyy.x() != xyy.x() || xyy.y() != xyy.y() || xyy.z() != xyy.z()) {
+    if (xyy.X != xyy.X || xyy.Y != xyy.Y || xyy.Z != xyy.Z) {
         delete series;
         return;
     }
@@ -225,9 +221,9 @@ void Scatter3dChart::inputRGBDataVec(QVector3D &xyy, QColor col, float size, boo
     series->setBaseColor(col);
 
     if (!flatten) {
-        item.setPosition(QVector3D(xyy.x(), xyy.z(), xyy.y()));
+        item.setPosition(QVector3D(xyy.X, xyy.Z, xyy.Y));
     } else {
-        item.setPosition(QVector3D(xyy.x(), 0.0, xyy.y()));
+        item.setPosition(QVector3D(xyy.X, 0.0, xyy.Z));
     }
 
     series->dataProxy()->addItem(item);
@@ -235,19 +231,19 @@ void Scatter3dChart::inputRGBDataVec(QVector3D &xyy, QColor col, float size, boo
     addSeries(series);
 }
 
-void Scatter3dChart::inputMonoDataVec(QVector3D &xyy, QScatter3DSeries *series, bool flatten)
+void Scatter3dChart::inputMonoDataVec(ImageXYZDouble &xyy, QScatter3DSeries *series, bool flatten)
 {
     QScatterDataItem item;
 
     // Don't plot if NaN exists
-    if (xyy.x() != xyy.x() || xyy.y() != xyy.y() || xyy.z() != xyy.z()) {
+    if (xyy.X != xyy.X || xyy.Y != xyy.Y || xyy.Z != xyy.Z) {
         return;
     }
 
     if (!flatten) {
-        item.setPosition(QVector3D(xyy.x(), xyy.z(), xyy.y()));
+        item.setPosition(QVector3D(xyy.X, xyy.Z, xyy.Y));
     } else {
-        item.setPosition(QVector3D(xyy.x(), 0.0, xyy.y()));
+        item.setPosition(QVector3D(xyy.X, 0.0, xyy.Y));
     }
 
     series->dataProxy()->addItem(item);

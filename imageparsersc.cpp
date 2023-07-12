@@ -27,10 +27,10 @@ class Q_DECL_HIDDEN ImageParserSC::Private
 public:
     QSize m_dimension{};
     QString m_profileName{};
-    QVector<cmsCIExyY> m_outxyY{};
-    QVector<cmsCIExyY> m_outerGamut{};
-    QVector<QColor> m_outQC{};
+    QVector<ImageXYZDouble> m_outerGamut{};
     QVector3D m_prfWtpt{};
+
+    QVector<ColorPoint> *m_outCp{nullptr};
 
     bool m_isSrgb{false};
 };
@@ -46,7 +46,7 @@ ImageParserSC::~ImageParserSC()
     delete d;
 }
 
-void ImageParserSC::inputFile(const QImage &imgIn, int size)
+void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint> *outCp)
 {
     const QByteArray imRawIcc = imgIn.colorSpace().iccProfile();
     const int imLongSide = std::max(imgIn.width(), imgIn.height());
@@ -105,6 +105,8 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size)
         }
     }
 
+    d->m_outCp = outCp;
+
     calculateFromFloat(imgData, srgbtoxyz, imgtoxyz, xyztosrgb);
 
     cmsDeleteTransform(srgbtoxyz);
@@ -116,7 +118,8 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
                               const QByteArray &iccData,
                               ImageColorDepthID depthId,
                               QSize imgSize,
-                              int size)
+                              int size,
+                              QVector<ColorPoint> *outCp)
 {
     if (depthId != Float32BitsColorDepthID) {
         qDebug() << "warning, depth is not float";
@@ -174,6 +177,8 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
         imgData.append({dataRaw[i], dataRaw[i + 1], dataRaw[i + 2]});
     }
 
+    d->m_outCp = outCp;
+
     calculateFromFloat(imgData, srgbtoxyz, imgtoxyz, xyztosrgb);
 
     cmsDeleteTransform(srgbtoxyz);
@@ -186,7 +191,12 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
                                        const cmsHTRANSFORM &imgtoxyz,
                                        const cmsHTRANSFORM &xyztosrgb)
 {
-    std::function<QPair<cmsCIExyY, QColor>(const QVector3D &)> convertXYYQC = [&](const QVector3D &input) {
+    /*
+     * Here still lies the main memory hog.. Apparently I can't append to a QVector in QtConcurrent
+     * without calling mutex (which is very slow), so temporary storage is still needed before
+     * transferring to the main array. Which can be massive on big images!
+     */
+    std::function<QPair<ImageXYZDouble, QColor>(const QVector3D &)> convertXYYQC = [&](const QVector3D &input) {
         const double pix[3] = {input.x(), input.y(), input.z()};
 
         cmsCIEXYZ bufXYZ;
@@ -203,10 +213,12 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
         bufout.setGreenF(pixOut[1]);
         bufout.setBlueF(pixOut[2]);
 
-        return QPair<cmsCIExyY, QColor>(bufxyY, bufout);
+        const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+
+        return QPair<ImageXYZDouble, QColor>(output, bufout);
     };
 
-    QFutureWatcher<QPair<cmsCIExyY, QColor>> futureTmp;
+    QFutureWatcher<QPair<ImageXYZDouble, QColor>> futureTmp;
 
     QProgressDialog pDial;
     pDial.setMinimum(0);
@@ -224,9 +236,12 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
     pDial.exec();
     futureTmp.waitForFinished();
 
-    for (int i = 0; i < imgData.size(); i++) {
-        d->m_outxyY.append(futureTmp.resultAt(i).first);
-        d->m_outQC.append(futureTmp.resultAt(i).second);
+    if (futureTmp.isCanceled()) {
+        return;
+    }
+
+    for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
+        d->m_outCp->append({it->first, it->second});
     }
 
     const cmsCIExyY profileWtpt = [&]() {
@@ -268,7 +283,9 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
             cmsCIExyY bufxyY;
             cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
             cmsXYZ2xyY(&bufxyY, &bufXYZ);
-            d->m_outerGamut.append(bufxyY);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
         }
     }
 
@@ -299,27 +316,21 @@ QVector2D ImageParserSC::getWhitePointXY()
     return QVector2D(d->m_prfWtpt.x(), d->m_prfWtpt.y());
 }
 
-QVector<QVector3D> ImageParserSC::getXYYArray()
+QVector<ImageXYZDouble> *ImageParserSC::getXYYArray() const
 {
-    QVector<QVector3D> tmp{};
-    for (auto &xyy : d->m_outxyY) {
-        tmp.append(QVector3D(xyy.x, xyy.y, xyy.Y));
-    }
-    return tmp;
+    // deprecated
+    return nullptr;
 }
 
-QVector<QVector3D> ImageParserSC::getOuterGamut()
+QVector<ImageXYZDouble> *ImageParserSC::getOuterGamut() const
 {
-    QVector<QVector3D> tmp{};
-    for (auto &xyy : d->m_outerGamut) {
-        tmp.append(QVector3D(xyy.x, xyy.y, xyy.Y));
-    }
-    return tmp;
+    return &d->m_outerGamut;
 }
 
-QVector<QColor> ImageParserSC::getQColorArray()
+QVector<QColor> *ImageParserSC::getQColorArray() const
 {
-    return d->m_outQC;
+    // deprecated
+    return nullptr;
 }
 
 bool ImageParserSC::isMatchSrgb()

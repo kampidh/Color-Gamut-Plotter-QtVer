@@ -41,6 +41,9 @@
 static const int adaptiveIterMaxPixels = 50000;
 static const int adaptiveIterMaxRenderedPoints = 25000;
 
+// Hard limit before switching to bucket rendering
+static const int maxPixelsBeforeBucket = 4000000;
+
 class Q_DECL_HIDDEN Scatter2dChart::Private
 {
 public:
@@ -52,7 +55,7 @@ public:
     bool renderSlices{false};
     QPainter m_painter;
     QPixmap m_pixmap;
-    QVector<QVector3D> m_dOutGamut;
+    QVector<ImageXYZDouble> m_dOutGamut;
     QVector2D m_dWhitePoint;
     int m_particleSize{0};
     int m_particleSizeStored{0};
@@ -75,7 +78,7 @@ public:
     QFont m_labelFont;
     QColor m_bgColor;
 
-    QVector<ColorPoint> m_cPoints;
+    QVector<ColorPoint> *m_cPoints;
     int m_idealThrCount = 0;
 
     QAction *setZoom;
@@ -196,7 +199,7 @@ Scatter2dChart::~Scatter2dChart()
     delete d;
 }
 
-void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &dColor, int size)
+void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
 {
     d->needUpdatePixmap = true;
     d->m_particleSize = size;
@@ -208,14 +211,11 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
         std::min(std::max(1.0 - (dArray.size() - 50000.0) / (5000000.0 - 50000.0), 0.0), 1.0);
     const double alphaLerpToGamma = 0.1 + ((1.0 - 0.1) * std::pow(alphaToLerp, 5.5));
 
-    for (int i = 0; i < dArray.size(); i++) {
-        d->m_cPoints.append({dArray.at(i), dColor.at(i)});
-//        d->m_cPoints.last().second.setAlphaF(alphaLerpToGamma);
-    }
+    d->m_cPoints = &dArray;
 
     std::vector<double> minMaxY;
-    for (const auto &cp : qAsConst(d->m_cPoints)) {
-        minMaxY.emplace_back(cp.first.z());
+    for (int i = 0; i < d->m_cPoints->size(); i++) {
+        minMaxY.emplace_back(d->m_cPoints->at(i).first.Z);
     }
     const double min = *std::min_element(minMaxY.cbegin(), minMaxY.cend());
     const double max = *std::max_element(minMaxY.cbegin(), minMaxY.cend());
@@ -224,14 +224,14 @@ void Scatter2dChart::addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &
 
     d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
 
-    if (d->m_cPoints.size() > adaptiveIterMaxPixels) {
-        d->adaptiveIterVal = d->m_cPoints.size() / adaptiveIterMaxPixels;
+    if (d->m_cPoints->size() > adaptiveIterMaxPixels) {
+        d->adaptiveIterVal = d->m_cPoints->size() / adaptiveIterMaxPixels;
     } else {
         d->adaptiveIterVal = 1;
     }
 }
 
-void Scatter2dChart::addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint)
+void Scatter2dChart::addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector2D &dWhitePoint)
 {
     d->m_dOutGamut = dOutGamut;
     d->m_dWhitePoint = dWhitePoint;
@@ -274,9 +274,6 @@ Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds() const
  */
 static const int bucketDefaultSize = 512;
 static const int bucketDownscaledSize = 1024;
-//static const int bucketPadding = 2;
-//static const int estimatedDownscale = 100;
-static const int maxPixelsBeforeBucket = 4000000;
 
 void Scatter2dChart::drawDataPoints()
 {
@@ -292,9 +289,9 @@ void Scatter2dChart::drawDataPoints()
 
     // calculate an estimate how much points is needed for onscreen rendering
     d->m_neededParticles = 0;
-    for (int i = 0; i < d->m_cPoints.size(); i += d->adaptiveIterVal) {
-        if ((d->m_cPoints.at(i).first.x() > rb.originX && d->m_cPoints.at(i).first.x() < rb.maxX)
-            && (d->m_cPoints.at(i).first.y() > rb.originY && d->m_cPoints.at(i).first.y() < rb.maxY)) {
+    for (int i = 0; i < d->m_cPoints->size(); i += d->adaptiveIterVal) {
+        if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
+            && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
             d->m_neededParticles++;
         }
     }
@@ -318,8 +315,8 @@ void Scatter2dChart::drawDataPoints()
     }();
 
     // internal function for painting the chunks concurrently
-    std::function<QPixmap(const QVector<ColorPointMapped> &)> paintInChunk = [&](const QVector<ColorPointMapped> &chunk) {
-        if (chunk.isEmpty()) {
+    std::function<QPixmap(const QPair<QVector<ColorPoint*>, QPoint> &)>const paintInChunk = [&](const QPair<QVector<ColorPoint*>, QPoint> &chunk) {
+        if (chunk.first.size() == 0) {
             return QPixmap();
         }
 
@@ -335,17 +332,34 @@ void Scatter2dChart::drawDataPoints()
         tempPainterMap.setPen(Qt::NoPen);
         tempPainterMap.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-        for (const ColorPointMapped &cp : chunk) {
-            if (d->isDownscaled) {
-                tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), 160));
-            } else {
-                tempPainterMap.setBrush(QColor(cp.second.red(), cp.second.green(), cp.second.blue(), d->m_pointOpacity));
+        const QPoint offset = [&]() {
+            if (!chunk.second.isNull()) {
+                return chunk.second;
             }
+            return QPoint();
+        }();
+
+        for (int i = 0; i < chunk.first.size(); i++) {
+            const QPointF mapped = [&]() {
+                if (offset.isNull()) {
+                    return mapPoint(QPointF(chunk.first.at(i)->first.X, chunk.first.at(i)->first.Y));
+                }
+                return mapPoint(QPointF(chunk.first.at(i)->first.X, chunk.first.at(i)->first.Y)) - offset;
+            }();
+
+            const QColor col = [&]() {
+                if (d->isDownscaled) {
+                    return QColor(chunk.first.at(i)->second.red(), chunk.first.at(i)->second.green(), chunk.first.at(i)->second.blue(), 160);
+                }
+                return QColor(chunk.first.at(i)->second.red(), chunk.first.at(i)->second.green(), chunk.first.at(i)->second.blue(), d->m_pointOpacity);
+            }();
+
+            tempPainterMap.setBrush(col);
 
             if (d->enableAA && !d->isDownscaled) {
-                tempPainterMap.drawEllipse(cp.first, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
+                tempPainterMap.drawEllipse(mapped, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
             } else {
-                tempPainterMap.drawEllipse(cp.first.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
+                tempPainterMap.drawEllipse(mapped.toPoint(), d->m_particleSize / 2, d->m_particleSize / 2);
             }
         }
 
@@ -354,8 +368,8 @@ void Scatter2dChart::drawDataPoints()
         return tempMap;
     };
 
-    QVector<QVector<ColorPointMapped>> fragmentedColPoints;
-    QVector<ColorPointMapped> temporaryColPoints;
+    QVector<QPair<QVector<ColorPoint*>, QPoint>> fragmentedColPoints;
+    QVector<ColorPoint*> temporaryColPoints;
 
     // progressive param
     const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
@@ -371,19 +385,19 @@ void Scatter2dChart::drawDataPoints()
     }
 
     // divide to chunks
-    for (int i = 0; i < d->m_cPoints.size(); i += d->m_dArrayIterSize) {
+    for (int i = 0; i < d->m_cPoints->size(); i += d->m_dArrayIterSize) {
         if (d->renderSlices) {
             const double sliceRange = d->m_maxY - d->m_minY;
             const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
             const double currentPos = ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange) - d->m_minY;
             const double minY = currentPos - sliceHalfSize;
             const double maxY = currentPos + sliceHalfSize;
-            if (d->m_cPoints.at(i).first.z() < minY || d->m_cPoints.at(i).first.z() > maxY) {
+            if (d->m_cPoints->at(i).first.Z < minY || d->m_cPoints->at(i).first.Z > maxY) {
                 continue;
             }
         }
         if (d->useBucketRender) {
-            const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
+            const QPointF map = mapPoint(QPointF(d->m_cPoints->at(i).first.X, d->m_cPoints->at(i).first.Y));
             bool isDataWritten = false;
 
             // iterate over the buckets for each points
@@ -400,8 +414,9 @@ void Scatter2dChart::drawDataPoints()
                         && (map.x() > 0 && map.x() < pixmapW)
                         && (map.y() > 0 && map.y() < pixmapH)) {
                         isDataWritten = true;
-                        const QPointF mapAdj = QPointF(map.x() - orX, map.y() - orY);
-                        fragmentedColPoints[bucketAbsPos].append({mapAdj, d->m_cPoints.at(i).second});
+                        const QPoint origin(orX, orY);
+                        fragmentedColPoints[bucketAbsPos].second = origin;
+                        fragmentedColPoints[bucketAbsPos].first.append(const_cast<ColorPoint*>(&d->m_cPoints->at(i)));
                     }
                 }
             }
@@ -411,27 +426,24 @@ void Scatter2dChart::drawDataPoints()
             }
         } else {
             // mutipass
-            if ((d->m_cPoints.at(i).first.x() > rb.originX && d->m_cPoints.at(i).first.x() < rb.maxX)
-                && (d->m_cPoints.at(i).first.y() > rb.originY && d->m_cPoints.at(i).first.y() < rb.maxY)) {
-                    const QPointF map = mapPoint(QPointF(d->m_cPoints.at(i).first.x(), d->m_cPoints.at(i).first.y()));
-                    temporaryColPoints.append({map, d->m_cPoints.at(i).second});
+            if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
+                && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
+                const QPointF map = mapPoint(QPointF(d->m_cPoints->at(i).first.X, d->m_cPoints->at(i).first.Y));
+                temporaryColPoints.append(const_cast<ColorPoint*>(&d->m_cPoints->at(i)));
                     d->m_drawnParticles++;
             }
 
-            // add passes when a chunk is filled + end chunk
+            // add passes when a chunk is filled
             if (chunkSize > 0 && temporaryColPoints.size() == chunkSize) {
-                fragmentedColPoints.append(temporaryColPoints);
-                temporaryColPoints.clear();
-            } else if (i >= (d->m_cPoints.size() - d->m_dArrayIterSize)) {
-                fragmentedColPoints.append(temporaryColPoints);
+                fragmentedColPoints.append({temporaryColPoints, QPoint()});
                 temporaryColPoints.clear();
             }
         }
     }
 
-    // add passes if any of the point is skipped on progressive
-    if (!d->useBucketRender && fragmentedColPoints.isEmpty() && !temporaryColPoints.isEmpty()) {
-        fragmentedColPoints.append(temporaryColPoints);
+    // pick leftover (last) progressive pass
+    if (!d->useBucketRender && temporaryColPoints.size() > 0) {
+        fragmentedColPoints.append({temporaryColPoints, QPoint()});
         temporaryColPoints.clear();
     }
 
@@ -570,7 +582,7 @@ void Scatter2dChart::drawGamutTriangleWP()
     QPolygonF gamutPoly;
 
     for (int i = 0; i < d->m_dOutGamut.size(); i++) {
-        gamutPoly << mapPoint(QPointF(d->m_dOutGamut.at(i).x(), d->m_dOutGamut.at(i).y()));
+        gamutPoly << mapPoint(QPointF(d->m_dOutGamut.at(i).X, d->m_dOutGamut.at(i).Y));
     }
 
     d->m_painter.drawPolygon(gamutPoly);
@@ -715,7 +727,7 @@ void Scatter2dChart::drawLabels()
                                 .arg(QString::number(centerXY.x(), 'f', 6),
                                      QString::number(centerXY.y(), 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
-                                     QString::number(d->m_cPoints.size()),
+                                     QString::number(d->m_cPoints->size()),
                                      QString::number(d->m_drawnParticles),
                                      QString(d->isDownscaled ? "rendering..." : "rendered"),
                                      QString(d->useBucketRender ? "bucket" : "progressive"));
@@ -1149,9 +1161,9 @@ void Scatter2dChart::drawDownscaled(int delayms)
         }
     } else {
         // static downscaling
-        if (d->m_cPoints.size() > 2000000) {
+        if (d->m_cPoints->size() > 2000000) {
             d->m_dArrayIterSize = 100;
-        } else if (d->m_cPoints.size() > 500000) {
+        } else if (d->m_cPoints->size() > 500000) {
             d->m_dArrayIterSize = 50;
         } else {
             d->m_dArrayIterSize = 10;

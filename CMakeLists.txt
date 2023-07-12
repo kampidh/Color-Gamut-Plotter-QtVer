@@ -48,6 +48,7 @@ set(PROJECT_SOURCES
 #        jxlreader.cpp
         imageformats.h
         constant_dataset.h
+        plot_typedefs.h
 )
 
 # move 3rd party into separate project

@@ -20,6 +20,8 @@
 #include <QVector3D>
 #include <QWidget>
 
+#include "plot_typedefs.h"
+
 class Scatter2dChart : public QWidget
 {
     Q_OBJECT
@@ -27,13 +29,13 @@ public:
     explicit Scatter2dChart(QWidget *parent = nullptr);
     ~Scatter2dChart();
 
-    void addDataPoints(QVector<QVector3D> &dArray, QVector<QColor> &dColor, int size = 100);
-    void addGamutOutline(QVector<QVector3D> &dOutGamut, QVector2D &dWhitePoint);
+    void addDataPoints(QVector<ColorPoint> &dArray, int size = 100);
+    void addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector2D &dWhitePoint);
     void resetCamera();
     QPixmap *getFullPixmap();
 
-    typedef QPair<QVector3D, QColor> ColorPoint;
-    typedef QPair<QPointF, QColor> ColorPointMapped;
+//    typedef QPair<QVector3D, QColor> ColorPoint;
+//    typedef QPair<QPointF, QColor> ColorPointMapped;
 
     typedef struct {
         double originX;

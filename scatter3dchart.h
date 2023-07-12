@@ -13,6 +13,8 @@
 
 #include <lcms2.h>
 
+#include "plot_typedefs.h"
+
 using namespace QtDataVisualization;
 
 class Scatter3dChart : public Q3DScatter
@@ -22,11 +24,7 @@ public:
     explicit Scatter3dChart(const QSurfaceFormat *format = nullptr, QWindow *parent = nullptr);
     ~Scatter3dChart();
 
-    void addDataPoints(QVector<QVector3D> &dArray,
-                       QVector<QColor> &dColor,
-                       QVector<QVector3D> &dGamut,
-                       bool isSrgb,
-                       int type);
+    void addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZDouble> &dGamut, bool isSrgb, int type);
 
     void changePresetCamera();
 
@@ -34,8 +32,8 @@ public slots:
     void setOrthogonal(bool set);
 
 private:
-    void inputRGBDataVec(QVector3D &xyy, QColor col, float size, bool flatten);
-    void inputMonoDataVec(QVector3D &xyy, QScatter3DSeries *series, bool flatten);
+    void inputRGBDataVec(ImageXYZDouble &xyy, QColor col, float size, bool flatten);
+    void inputMonoDataVec(ImageXYZDouble &xyy, QScatter3DSeries *series, bool flatten);
 
     class Private;
     Private *const d{nullptr};

@@ -9,6 +9,12 @@
 #include "scatter2dchart.h"
 #include "scatter3dchart.h"
 
+#include "./gamutplotterconfig.h"
+
+#ifdef HAVE_JPEGXL
+#include "jxlreader.h"
+#endif
+
 #include <QApplication>
 #include <QDebug>
 
@@ -27,6 +33,8 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <cstring>
+
 class Q_DECL_HIDDEN ScatterDialog::Private
 {
 public:
@@ -43,9 +51,12 @@ public:
     bool m_is2d{false};
     bool m_isFullscreen{false};
     QSize m_lastSize;
+
+    QVector<ColorPoint> inputImg;
+    ImageParserSC parsedImg;
 };
 
-ScatterDialog::ScatterDialog(ImageParserSC &inImage, QString fName, int plotType, int plotDensity, QWidget *parent)
+ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidget *parent)
     : QWidget(parent)
     , d(new Private)
 {
@@ -60,33 +71,78 @@ ScatterDialog::ScatterDialog(ImageParserSC &inImage, QString fName, int plotType
     d->m_fName = fName;
     d->m_plotType = plotType;
     d->m_plotDensity = plotDensity;
+}
 
-    QVector<QVector3D> outxyY = inImage.getXYYArray();
-    QVector<QVector3D> outGamut = inImage.getOuterGamut();
-    QVector<QColor> outQC = inImage.getQColorArray();
-    const bool isSrgb = inImage.isMatchSrgb();
-    d->m_profileName = inImage.getProfileName();
-    d->m_wtpt = inImage.getWhitePointXY();
+ScatterDialog::~ScatterDialog()
+{
+    delete d;
+}
+
+bool ScatterDialog::startParse()
+{
+#ifdef HAVE_JPEGXL
+    QFileInfo fi(d->m_fName);
+    if (fi.suffix() == "jxl") {
+        JxlReader jxlfile(d->m_fName);
+        QMessageBox msg;
+        if (!jxlfile.processJxl()) {
+            QMessageBox msg;
+            msg.warning(this, "Warning", "Failed to open JXL file!");
+            return false;
+        }
+        d->parsedImg.inputFile(jxlfile.getRawImage(),
+                              jxlfile.getRawICC(),
+                              jxlfile.getImageColorDepth(),
+                              jxlfile.getImageDimension(),
+                              d->m_plotDensity,
+                              &d->inputImg);
+    } else {
+        const QImage imgs(d->m_fName);
+        if (imgs.isNull()) {
+            QMessageBox msg;
+            msg.warning(this, "Warning", "Invalid or unsupported image format!");
+            return false;
+        }
+        d->parsedImg.inputFile(imgs, d->m_plotDensity, &d->inputImg);
+    }
+#else
+    const QImage imgs(d->m_fName);
+    if (imgs.isNull()) {
+        QMessageBox msg;
+        msg.warning(this, "Warning", "Invalid or unsupported image format!");
+        return false;
+    }
+    d->parsedImg.inputFile(imgs, d->m_plotDensity, &d->inputImg);
+#endif
+
+    if (d->inputImg.isEmpty()) {
+        return false;
+    }
+
+    QVector<ImageXYZDouble> outGamut = *d->parsedImg.getOuterGamut();
+    d->m_profileName = d->parsedImg.getProfileName();
+    d->m_wtpt = d->parsedImg.getWhitePointXY();
+
+    if (d->m_is2d) {
+        d->m_2dScatter = new Scatter2dChart();
+        d->m_2dScatter->addDataPoints(d->inputImg, 2);
+        d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
+        layout()->replaceWidget(container, d->m_2dScatter);
+        orthogonalViewChk->setVisible(false);
+    }
 
     if (!d->m_is2d) {
+        const bool isSrgb = d->parsedImg.isMatchSrgb();
         d->m_3dScatter = new Scatter3dChart();
-        d->m_3dScatter->addDataPoints(outxyY, outQC, outGamut, isSrgb, d->m_plotType);
+        d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);
         layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
 
         if (!d->m_3dScatter->hasContext()) {
             QMessageBox msgBox;
             msgBox.setText("Couldn't initialize the OpenGL context.");
             msgBox.exec();
-            return;
+            return false;
         }
-    }
-
-    if (d->m_is2d) {
-        d->m_2dScatter = new Scatter2dChart();
-        d->m_2dScatter->addDataPoints(outxyY, outQC, 2);
-        d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
-        layout()->replaceWidget(container, d->m_2dScatter);
-        orthogonalViewChk->setVisible(false);
     }
 
     QSize screenSize = screen()->size();
@@ -126,11 +182,8 @@ ScatterDialog::ScatterDialog(ImageParserSC &inImage, QString fName, int plotType
     }
 
     resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
-}
 
-ScatterDialog::~ScatterDialog()
-{
-    delete d;
+    return true;
 }
 
 void ScatterDialog::resetWinDimension()

@@ -7,14 +7,9 @@
 #include <gamutplotterconfig.h>
 
 #include "./ui_mainwindow.h"
-#include "imageparsersc.h"
 #include "mainwindow.h"
 #include "qevent.h"
 #include "scatterdialog.h"
-
-#ifdef HAVE_JPEGXL
-#include "jxlreader.h"
-#endif
 
 //#include <QEvent>
 #include <QDebug>
@@ -76,7 +71,7 @@ void MainWindow::openFileName()
 
 void MainWindow::goPlot()
 {
-    //    plotBtn->setEnabled(false);
+    plotBtn->setEnabled(false);
     const QString fileName = fnameFieldTxt->text();
 
     if (fileName == "") {
@@ -137,51 +132,15 @@ void MainWindow::goPlot()
         return 10;
     }();
 
-    ImageParserSC parsedImage;
-
-#ifdef HAVE_JPEGXL
-    QFileInfo fi(fileName);
-    if (fi.suffix() == "jxl") {
-        JxlReader jxlfile(fileName);
-        QMessageBox msg;
-        if (!jxlfile.processJxl()) {
-            QMessageBox msg;
-            msg.warning(this, "Warning", "Failed to open JXL file!");
-            plotBtn->setEnabled(true);
-            return;
-        }
-        parsedImage.inputFile(jxlfile.getRawImage(),
-                              jxlfile.getRawICC(),
-                              jxlfile.getImageColorDepth(),
-                              jxlfile.getImageDimension(),
-                              plotDensity);
-        plotBtn->setEnabled(true);
-    } else {
-        const QImage imgs(fileName);
-        if (imgs.isNull()) {
-            QMessageBox msg;
-            msg.warning(this, "Warning", "Invalid or unsupported image format!");
-            plotBtn->setEnabled(true);
-            return;
-        }
-        parsedImage.inputFile(imgs, plotDensity);
-    }
-#else
-    const QImage imgs(fileName);
-    if (imgs.isNull()) {
-        QMessageBox msg;
-        msg.warning(this, "Warning", "Invalid or unsupported image format!");
+    d->sc = new ScatterDialog(fileName, plotTypeIndex, plotDensity);
+    if (!d->sc->startParse()) {
+        delete d->sc;
         plotBtn->setEnabled(true);
         return;
     }
-    parsedImage.inputFile(imgs, plotDensity);
-#endif
-
-    d->sc = new ScatterDialog(parsedImage, fileName, plotTypeIndex, plotDensity);
+    plotBtn->setEnabled(true);
     d->sc->show();
 
     const QPoint midpos(d->sc->frameSize().width() / 2, d->sc->frameSize().height() / 2);
     d->sc->move(QGuiApplication::screens().at(0)->geometry().center() - midpos);
-
-    //    QObject::connect(sc, &ScatterDialog::destroyed, plotBtn, &QPushButton::setEnabled);
 }

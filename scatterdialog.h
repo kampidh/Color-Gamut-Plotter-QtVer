@@ -15,8 +15,10 @@ class ScatterDialog : public QWidget, public Ui::ScatterDialog
 {
     Q_OBJECT
 public:
-    ScatterDialog(ImageParserSC &inImage, QString fName, int plotType, int plotDensity, QWidget *parent = nullptr);
+    ScatterDialog(QString fName, int plotType, int plotDensity, QWidget *parent = nullptr);
     ~ScatterDialog();
+
+    bool startParse();
 
     void savePlotImage();
     void resetWinDimension();
