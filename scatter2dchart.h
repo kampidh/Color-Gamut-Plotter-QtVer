@@ -69,6 +69,7 @@ private:
     void drawSpectralLine();
     void drawSrgbTriangle();
     void drawGamutTriangleWP();
+    void drawMacAdamEllipses();
     void drawGrids();
     void drawLabels();
     void doUpdate();

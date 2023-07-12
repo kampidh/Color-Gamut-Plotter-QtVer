@@ -86,6 +86,7 @@ public:
     QAction *drawGrids;
     QAction *drawSrgbGamut;
     QAction *drawImgGamut;
+    QAction *drawMacAdamEllipses;
     QAction *setStaticDownscale;
     QAction *setAlpha;
     QAction *setAntiAliasing;
@@ -98,6 +99,7 @@ public:
     bool enableGrids{true};
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
+    bool enableMacAdamEllipses{false};
     bool enableStaticDownscale{false};
     bool enableAA{false};
 
@@ -149,6 +151,11 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawImgGamut->setCheckable(true);
     d->drawImgGamut->setChecked(d->enableImgGamut);
     connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawMacAdamEllipses = new QAction("Draw MacAdam Ellipses");
+    d->drawMacAdamEllipses->setCheckable(true);
+    d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
+    connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     d->setStaticDownscale = new QAction("Use static downscaling");
     d->setStaticDownscale->setCheckable(true);
@@ -464,17 +471,16 @@ void Scatter2dChart::drawDataPoints()
     QImage tempImage = temp.toImage();
 
     // workaround for Lighten composite mode have broken alpha...
-//    if (!d->useBucketRender && !d->isDownscaled && d->m_bgColor != Qt::black) {
-//        qDebug() << "use composite workaround";
-//        for (int y = 0; y < tempImage.height(); y++) {
-//            for (int x = 0; x < tempImage.width(); x++) {
-//                const QColor px = tempImage.pixelColor({x, y});
-//                if (px.red() == 0 && px.green() == 0 && px.blue() == 0 && px.alpha() > 0) {
-//                    tempImage.setPixelColor({x, y}, Qt::transparent);
-//                }
-//            }
-//        }
-//    }
+    if (!d->useBucketRender && !d->isDownscaled && d->m_bgColor != Qt::black) {
+        for (int y = 0; y < tempImage.height(); y++) {
+            for (int x = 0; x < tempImage.width(); x++) {
+                const QColor px = tempImage.pixelColor({x, y});
+                if (px.red() == 0 && px.green() == 0 && px.blue() == 0 && px.alphaF() < 0.1) {
+                    tempImage.setPixelColor({x, y}, Qt::transparent);
+                }
+            }
+        }
+    }
 
     d->m_painter.drawImage(d->m_pixmap.rect(), tempImage);
 
@@ -563,6 +569,47 @@ void Scatter2dChart::drawGamutTriangleWP()
     const QPointF mapW = mapPoint(QPointF(d->m_dWhitePoint.x(), d->m_dWhitePoint.y()));
     d->m_painter.setBrush(Qt::white);
     d->m_painter.drawEllipse(mapW.x() - (4 / 2), mapW.y() - (4 / 2), 4, 4);
+
+    d->m_painter.restore();
+}
+
+void Scatter2dChart::drawMacAdamEllipses()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
+
+    QPen pn;
+    pn.setColor(QColor(64, 64, 64, 128));
+    pn.setWidth(2);
+    pn.setStyle(Qt::DotLine);
+
+    QPen pnInner;
+    pnInner.setColor(QColor(128, 128, 128, 128));
+    pnInner.setWidth(2);
+
+    d->m_painter.setBrush(Qt::transparent);
+
+    for (int i = 0; i < 25; i++) {
+        const QPointF centerCol = mapPoint({MacAdam_ellipses[i][0], MacAdam_ellipses[i][1]});
+        const QSizeF ellipseSize(MacAdam_ellipses[i][5], MacAdam_ellipses[i][6]);
+        const double theta(MacAdam_ellipses[i][7]);
+
+        d->m_painter.resetTransform();
+        d->m_painter.translate(centerCol);
+        d->m_painter.rotate(theta * -1.0);
+
+        d->m_painter.setPen(pn);
+        d->m_painter.drawEllipse(QPointF(0, 0),
+                                 ellipseSize.width() * oneUnitInPx() / 100.0,
+                                 ellipseSize.height() * oneUnitInPx() / 100.0);
+
+        d->m_painter.setPen(pnInner);
+        d->m_painter.drawEllipse(QPointF(0, 0),
+                                 ellipseSize.width() * oneUnitInPx() / 1000.0,
+                                 ellipseSize.height() * oneUnitInPx() / 1000.0);
+    }
+    d->m_painter.resetTransform();
 
     d->m_painter.restore();
 }
@@ -703,6 +750,9 @@ void Scatter2dChart::doUpdate()
     }
     if (d->enableImgGamut) {
         drawGamutTriangleWP();
+    }
+    if (d->enableMacAdamEllipses) {
+        drawMacAdamEllipses();
     }
     if (d->enableLabels) {
         drawLabels();
@@ -851,6 +901,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(d->drawGrids);
     menu.addAction(d->drawSrgbGamut);
     menu.addAction(d->drawImgGamut);
+    menu.addAction(d->drawMacAdamEllipses);
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
     menu.addAction(d->setAlpha);
@@ -962,6 +1013,7 @@ void Scatter2dChart::changeProperties()
     d->enableGrids = d->drawGrids->isChecked();
     d->enableSrgbGamut = d->drawSrgbGamut->isChecked();
     d->enableImgGamut = d->drawImgGamut->isChecked();
+    d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
 
@@ -1022,8 +1074,16 @@ void Scatter2dChart::changePixmapSize()
 {
     const double currentPixmapSize = d->m_pixmapSize;
     bool isPixSizeOkay(false);
-    const double setPixmapSize =
-        QInputDialog::getDouble(this, "Set render scaling", "Scale", currentPixmapSize, 1.0, 8.0, 1, &isPixSizeOkay);
+    const double setPixmapSize = QInputDialog::getDouble(this,
+                                                         "Set render scaling",
+                                                         "Scale",
+                                                         currentPixmapSize,
+                                                         1.0,
+                                                         8.0,
+                                                         1,
+                                                         &isPixSizeOkay,
+                                                         Qt::WindowFlags(),
+                                                         0.1);
     if (isPixSizeOkay) {
         d->m_pixmapSize = setPixmapSize;
         d->m_offsetX = d->m_offsetX * (d->m_pixmapSize / currentPixmapSize);
