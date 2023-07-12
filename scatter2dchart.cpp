@@ -71,6 +71,7 @@ public:
     double m_pixmapSize{1.0};
     double m_offsetX{100};
     double m_offsetY{50};
+    double m_mpxPerSec{0};
     QPoint m_lastPos{};
     QPointF m_lastCenter{};
     int m_dArrayIterSize = 1;
@@ -97,6 +98,7 @@ public:
     QAction *setPixmapSize;
     QAction *setBgColor;
     QAction *saveSlicesAsImage;
+    QAction *drawStats;
 
     bool enableLabels{true};
     bool enableGrids{true};
@@ -105,6 +107,7 @@ public:
     bool enableMacAdamEllipses{false};
     bool enableStaticDownscale{false};
     bool enableAA{false};
+    bool enableStats{false};
 
     QClipboard *m_clipb;
 };
@@ -186,6 +189,11 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
     d->saveSlicesAsImage = new QAction("Save Y slices as image...");
     connect(d->saveSlicesAsImage, &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
+
+    d->drawStats = new QAction("Show stats on labels");
+    d->drawStats->setCheckable(true);
+    d->drawStats->setChecked(d->enableStats);
+    connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     if (QThread::idealThreadCount() > 1) {
         d->m_idealThrCount = QThread::idealThreadCount();
@@ -277,6 +285,9 @@ static const int bucketDownscaledSize = 1024;
 
 void Scatter2dChart::drawDataPoints()
 {
+    QElapsedTimer timer;
+    timer.start();
+
     const RenderBounds rb = getRenderBounds();
     // prepare window dimension
     const int pixmapH = d->m_pixmap.height();
@@ -498,6 +509,9 @@ void Scatter2dChart::drawDataPoints()
     d->m_painter.drawImage(d->m_pixmap.rect(), tempImage);
 
     d->m_painter.restore();
+
+    const qint64 elapsed = timer.elapsed();
+    d->m_mpxPerSec = (d->m_drawnParticles / 1000000.0) / (elapsed / 1000.0);
 }
 
 void Scatter2dChart::drawSpectralLine()
@@ -713,6 +727,7 @@ void Scatter2dChart::drawLabels()
         mapScreenPoint({static_cast<double>(width() / 2.0 - 0.5), static_cast<double>(height() / 2 - 0.5)});
 
     QString fullLegends;
+
     if (d->renderSlices) {
         const double sliceRange = d->m_maxY - d->m_minY;
         const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
@@ -723,16 +738,28 @@ void Scatter2dChart::drawLabels()
 
         fullLegends += slicesPos;
     }
-    const QString legends = QString("Pixels: %4 (total)| %5 (%6, %7)\nCenter: x:%1 | y:%2\nZoom: %3\%")
+
+    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nCenter: x:%1 | y:%2\nZoom: %3\%")
                                 .arg(QString::number(centerXY.x(), 'f', 6),
                                      QString::number(centerXY.y(), 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
                                      QString::number(d->m_cPoints->size()),
                                      QString::number(d->m_drawnParticles),
-                                     QString(d->isDownscaled ? "rendering..." : "rendered"),
-                                     QString(d->useBucketRender ? "bucket" : "progressive"));
+                                     QString(d->isDownscaled ? "rendering..." : "rendered"));
 
     fullLegends += legends;
+
+    if (d->enableStats) {
+        const QString mpps =
+            QString("\n%1 MPoints/s (%2%5) | Canvas: %3x%4")
+                .arg(QString::number(d->m_mpxPerSec, 'f', 3),
+                     QString(d->useBucketRender ? "bucket" : "progressive"),
+                     QString::number(d->m_pixmap.width()),
+                     QString::number(d->m_pixmap.height()),
+                     QString(!d->isDownscaled ? d->enableAA ? ", AA" : "" : ""));
+
+        fullLegends += mpps;
+    }
 
     d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, fullLegends);
 
@@ -785,12 +812,18 @@ void Scatter2dChart::doUpdate()
 
 void Scatter2dChart::paintEvent(QPaintEvent *)
 {
+    if (!d->isDownscaled) {
+        setCursor(Qt::BusyCursor);
+    }
     // draw something
     QPainter p(this);
     if (d->needUpdatePixmap) {
         doUpdate();
     }
     p.drawPixmap(0, 0, d->m_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    if (!d->isDownscaled) {
+        setCursor(Qt::ArrowCursor);
+    }
 }
 
 void Scatter2dChart::resizeEvent(QResizeEvent *event)
@@ -823,8 +856,8 @@ void Scatter2dChart::wheelEvent(QWheelEvent *event)
 
     event->accept();
 
-    // Zoom cap (around 80% - 20000%)
-    if (d->m_zoomRatio + zoomIncrement > 0.8 && d->m_zoomRatio + zoomIncrement < 200.0) {
+    // Zoom cap (around 25% - 20000%)
+    if (d->m_zoomRatio + zoomIncrement > 0.25 && d->m_zoomRatio + zoomIncrement < 200.0) {
         drawDownscaled(500);
 
         // window screen space -> absolute space for a smoother zooming at cursor point
@@ -855,6 +888,7 @@ void Scatter2dChart::mousePressEvent(QMouseEvent *event)
         return;
     }
     if (event->button() == Qt::LeftButton) {
+        setCursor(Qt::OpenHandCursor);
         d->m_lastPos = event->pos();
     }
 }
@@ -866,6 +900,7 @@ void Scatter2dChart::mouseMoveEvent(QMouseEvent *event)
         return;
     }
     if (event->buttons() & Qt::LeftButton) {
+        setCursor(Qt::ClosedHandCursor);
         d->isMouseHold = true;
         drawDownscaled(500);
 
@@ -889,6 +924,7 @@ void Scatter2dChart::mouseReleaseEvent(QMouseEvent *event)
         event->ignore();
         return;
     }
+    setCursor(Qt::ArrowCursor);
     if ((event->button() == Qt::LeftButton) && d->isMouseHold) {
         d->isMouseHold = false;
         drawDownscaled(10);
@@ -932,6 +968,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
 
     extra.setTitle("Extra options");
     menu.addMenu(&extra);
+    extra.addAction(d->drawStats);
     extra.addAction(d->setPixmapSize);
     extra.addAction(d->setStaticDownscale);
     extra.addAction(d->saveSlicesAsImage);
@@ -947,7 +984,7 @@ void Scatter2dChart::changeZoom()
     const double currentYOffset = (d->m_offsetY / scaleRatio) / d->m_zoomRatio;
     bool isZoomOkay(false);
     const double setZoom =
-        QInputDialog::getDouble(this, "Set zoom", "Zoom", currentZoom, 80.0, 20000.0, 1, &isZoomOkay);
+        QInputDialog::getDouble(this, "Set zoom", "Zoom", currentZoom, 25.0, 20000.0, 1, &isZoomOkay);
     if (isZoomOkay) {
         d->keepCentered = true;
         d->m_zoomRatio = setZoom / 100.0;
@@ -999,7 +1036,7 @@ void Scatter2dChart::pasteOrigAndZoom()
 
         if (parsed.size() == 5) {
             const double setZoom = parsed.at(0).toDouble() / 100.0;
-            if (setZoom > 0.8 && setZoom < 200.0) {
+            if (setZoom > 0.25 && setZoom < 200.0) {
                 d->m_zoomRatio = setZoom;
             }
 
@@ -1038,6 +1075,7 @@ void Scatter2dChart::changeProperties()
     d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
+    d->enableStats = d->drawStats->isChecked();
 
     drawDownscaled(50);
     d->needUpdatePixmap = true;
