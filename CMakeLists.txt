@@ -47,6 +47,7 @@ set(PROJECT_SOURCES
 #        jxlreader.h
 #        jxlreader.cpp
         imageformats.h
+        constant_dataset.h
 )
 
 # move 3rd party into separate project
