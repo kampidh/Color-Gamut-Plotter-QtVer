@@ -335,7 +335,9 @@ void Scatter2dChart::drawDataPoints()
         tempMap.fill(Qt::transparent);
         QPainter tempPainterMap;
 
-        tempPainterMap.begin(&tempMap);
+        if (!tempPainterMap.begin(&tempMap)) {
+            return QPixmap();
+        }
 
         if (!d->isDownscaled && d->enableAA) {
             tempPainterMap.setRenderHint(QPainter::Antialiasing);
