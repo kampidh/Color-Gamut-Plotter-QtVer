@@ -9,6 +9,9 @@ typedef enum {
 } ImageColorDepthID;
 
 typedef enum {
+    GrayColorModelID,
+    RGBColorModelID,
+    CMYKColorModelID,
     GrayAColorModelID,
     RGBAColorModelID,
     CMYKAColorModelID

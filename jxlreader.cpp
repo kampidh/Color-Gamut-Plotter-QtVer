@@ -168,20 +168,20 @@ bool JxlReader::processJxl()
 
             if (d->m_info.num_color_channels == 1) {
                 // Grayscale
-                d->m_pixelFormat.num_channels = 2;
-                d->m_colorID = GrayAColorModelID;
+                d->m_pixelFormat.num_channels = 1;
+                d->m_colorID = GrayColorModelID;
             } else if (d->m_info.num_color_channels == 3 && !d->isCMYK) {
                 // RGBA
-                d->m_pixelFormat.num_channels = 4;
-                d->m_colorID = RGBAColorModelID;
+                d->m_pixelFormat.num_channels = 3;
+                d->m_colorID = RGBColorModelID;
             } else if (d->m_info.num_color_channels == 3 && d->isCMYK) {
                 // CMYKA
                 d->m_pixelFormat.num_channels = 4;
-                d->m_colorID = CMYKAColorModelID;
+                d->m_colorID = CMYKColorModelID;
             } else {
                 qWarning() << "Forcing a RGBA conversion, unknown color space";
-                d->m_pixelFormat.num_channels = 4;
-                d->m_colorID = RGBAColorModelID;
+                d->m_pixelFormat.num_channels = 3;
+                d->m_colorID = RGBColorModelID;
             }
             qDebug() << "Basic info get";
         } else if (status == JXL_DEC_COLOR_ENCODING) {
@@ -230,7 +230,7 @@ bool JxlReader::processJxl()
     //    qDebug() << "Pixel count:" << d->m_info.xsize * d->m_info.ysize;
     //    qDebug() << "Raw size / depth / channel:" << (d->m_rawData.size() / 4) / 4;
 
-    if (d->m_colorID != RGBAColorModelID) {
+    if (d->m_colorID != RGBColorModelID) {
         qWarning() << "Only RGB/A that is supported";
         return false;
     }

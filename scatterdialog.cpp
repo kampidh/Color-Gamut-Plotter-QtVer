@@ -80,6 +80,8 @@ ScatterDialog::~ScatterDialog()
 
 bool ScatterDialog::startParse()
 {
+    QCoreApplication::processEvents();
+
 #ifdef HAVE_JPEGXL
     QFileInfo fi(d->m_fName);
     if (fi.suffix() == "jxl") {
