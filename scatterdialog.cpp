@@ -78,6 +78,13 @@ ScatterDialog::~ScatterDialog()
     delete d;
 }
 
+void ScatterDialog::closeEvent(QCloseEvent *event)
+{
+    if (d->m_is2d) {
+        d->m_2dScatter->cancelRender();
+    }
+}
+
 bool ScatterDialog::startParse()
 {
     QCoreApplication::processEvents();

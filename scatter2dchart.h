@@ -34,6 +34,8 @@ public:
     void resetCamera();
     QPixmap *getFullPixmap();
 
+    void cancelRender();
+
 //    typedef QPair<QVector3D, QColor> ColorPoint;
 //    typedef QPair<QPointF, QColor> ColorPointMapped;
 
@@ -65,6 +67,8 @@ private slots:
     void changePixmapSize();
     void changeBgColor();
     void saveSlicesAsImage();
+    void drawFutureAt(int ft);
+    void onFinishedDrawing();
 
 private:
     void drawDataPoints();
