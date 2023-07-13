@@ -196,7 +196,7 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
      * without calling mutex (which is very slow), so temporary storage is still needed before
      * transferring to the main array. Which can be massive on big images!
      */
-    std::function<QPair<ImageXYZDouble, QColor>(const QVector3D &)> convertXYYQC = [&](const QVector3D &input) {
+    std::function<ColorPoint(const QVector3D &)> convertXYYQC = [&](const QVector3D &input) {
         const double pix[3] = {input.x(), input.y(), input.z()};
 
         cmsCIEXYZ bufXYZ;
@@ -215,10 +215,10 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
 
         const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
 
-        return QPair<ImageXYZDouble, QColor>(output, bufout);
+        return ColorPoint(output, bufout);
     };
 
-    QFutureWatcher<QPair<ImageXYZDouble, QColor>> futureTmp;
+    QFutureWatcher<ColorPoint> futureTmp;
 
     QProgressDialog pDial;
     pDial.setMinimum(0);
@@ -241,7 +241,7 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
     }
 
     for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
-        d->m_outCp->append({it->first, it->second});
+        d->m_outCp->append(*it);
     }
 
     const cmsCIExyY profileWtpt = [&]() {
