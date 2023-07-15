@@ -156,33 +156,33 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->pasteOrigAndZoom = new QAction("Paste plot state");
     connect(d->pasteOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
 
-    d->drawLabels = new QAction("Draw labels");
+    d->drawLabels = new QAction("Statistics");
     d->drawLabels->setCheckable(true);
     d->drawLabels->setChecked(d->enableLabels);
     connect(d->drawLabels, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawGrids = new QAction("Draw grids and spectral line");
+    d->drawGrids = new QAction("Grids and spectral line");
     d->drawGrids->setCheckable(true);
     d->drawGrids->setChecked(d->enableGrids);
     connect(d->drawGrids, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawSrgbGamut = new QAction("Draw sRGB gamut");
+    d->drawSrgbGamut = new QAction("sRGB gamut");
     d->drawSrgbGamut->setCheckable(true);
     d->drawSrgbGamut->setChecked(d->enableSrgbGamut);
     connect(d->drawSrgbGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawImgGamut = new QAction("Draw image gamut");
+    d->drawImgGamut = new QAction("Image gamut");
     d->drawImgGamut->setCheckable(true);
     d->drawImgGamut->setChecked(d->enableImgGamut);
     connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawMacAdamEllipses = new QAction("Draw MacAdam ellipses");
+    d->drawMacAdamEllipses = new QAction("MacAdam ellipses");
     d->drawMacAdamEllipses->setToolTip("Draw in both normal, and 10x size as depicted in MacAdam's paper.");
     d->drawMacAdamEllipses->setCheckable(true);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
     connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawColorCheckerPoints = new QAction("Draw ColorChecker points");
+    d->drawColorCheckerPoints = new QAction("ColorChecker points");
     d->drawColorCheckerPoints->setCheckable(true);
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -213,7 +213,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->saveSlicesAsImage = new QAction("Save Y slices as image...");
     connect(d->saveSlicesAsImage, &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
 
-    d->drawStats = new QAction("Show stats on labels");
+    d->drawStats = new QAction("Show stats on statistics");
     d->drawStats->setCheckable(true);
     d->drawStats->setChecked(d->enableStats);
     connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -1232,20 +1232,28 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2));
     QMenu menu(this);
     QMenu extra(this);
+    QMenu showOverlays(this);
+
     menu.addAction(sizePos);
+
     menu.addSeparator();
     menu.addAction(d->setZoom);
     menu.addAction(d->setOrigin);
+
     menu.addSeparator();
     menu.addAction(d->copyOrigAndZoom);
     menu.addAction(d->pasteOrigAndZoom);
+
     menu.addSeparator();
-    menu.addAction(d->drawLabels);
-    menu.addAction(d->drawGrids);
-    menu.addAction(d->drawSrgbGamut);
-    menu.addAction(d->drawImgGamut);
-    menu.addAction(d->drawMacAdamEllipses);
-    menu.addAction(d->drawColorCheckerPoints);
+    showOverlays.setTitle("Overlays");
+    menu.addMenu(&showOverlays);
+    showOverlays.addAction(d->drawLabels);
+    showOverlays.addAction(d->drawGrids);
+    showOverlays.addAction(d->drawSrgbGamut);
+    showOverlays.addAction(d->drawImgGamut);
+    showOverlays.addAction(d->drawMacAdamEllipses);
+    showOverlays.addAction(d->drawColorCheckerPoints);
+
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
     menu.addAction(d->setAlpha);
