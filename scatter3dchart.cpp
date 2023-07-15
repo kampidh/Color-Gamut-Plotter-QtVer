@@ -202,7 +202,7 @@ void Scatter3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZ
     cmsDeleteTransform(xform);
 }
 
-void Scatter3dChart::inputRGBDataVec(ImageXYZDouble &xyy, QColor col, float size, bool flatten)
+void Scatter3dChart::inputRGBDataVec(ImageXYZDouble &xyy, ImageRGBFloat col, float size, bool flatten)
 {
     QScatter3DSeries *series = new QScatter3DSeries();
     series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
@@ -218,7 +218,10 @@ void Scatter3dChart::inputRGBDataVec(ImageXYZDouble &xyy, QColor col, float size
         return;
     }
 
-    series->setBaseColor(col);
+    QColor cols;
+    cols.setRgbF(col.R, col.G, col.B);
+
+    series->setBaseColor(cols);
 
     if (!flatten) {
         item.setPosition(QVector3D(xyy.X, xyy.Z, xyy.Y));

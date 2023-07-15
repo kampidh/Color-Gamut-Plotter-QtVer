@@ -32,7 +32,7 @@ public slots:
     void setOrthogonal(bool set);
 
 private:
-    void inputRGBDataVec(ImageXYZDouble &xyy, QColor col, float size, bool flatten);
+    void inputRGBDataVec(ImageXYZDouble &xyy, ImageRGBFloat col, float size, bool flatten);
     void inputMonoDataVec(ImageXYZDouble &xyy, QScatter3DSeries *series, bool flatten);
 
     class Private;

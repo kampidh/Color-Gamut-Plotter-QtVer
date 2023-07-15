@@ -36,9 +36,6 @@ public:
 
     void cancelRender();
 
-//    typedef QPair<QVector3D, QColor> ColorPoint;
-//    typedef QPair<QPointF, QColor> ColorPointMapped;
-
     typedef struct {
         double originX;
         double originY;

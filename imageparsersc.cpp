@@ -99,13 +99,7 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
         }
     }();
 
-    const cmsHTRANSFORM xyztosrgb = [&]() {
-        if (hsIMG) {
-            return cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_DBL, INTENT_RELATIVE_COLORIMETRIC, 0);
-        } else {
-            return cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_DBL, INTENT_RELATIVE_COLORIMETRIC, 0);
-        }
-    }();
+    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, INTENT_RELATIVE_COLORIMETRIC, 0);
 
     const quint8 chNum = 4;
 
@@ -136,6 +130,12 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
     case QImage::Format_RGB32:
     case QImage::Format_ARGB32:
     case QImage::Format_ARGB32_Premultiplied: {
+
+        // 32 bit is always BGR?
+        d->chR = 2;
+        d->chG = 1;
+        d->chB = 0;
+
         QVector<const quint8 *> imgPointers;
 
         const auto *dataRaw = reinterpret_cast<const quint8 *>(d->m_rawImageByte);
@@ -224,13 +224,7 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
         }
     }();
 
-    const cmsHTRANSFORM xyztosrgb = [&]() {
-        if (hsIMG) {
-            return cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_DBL, INTENT_RELATIVE_COLORIMETRIC, 0);
-        } else {
-            return cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_DBL, INTENT_RELATIVE_COLORIMETRIC, 0);
-        }
-    }();
+    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, INTENT_RELATIVE_COLORIMETRIC, 0);
 
     d->m_outCp = outCp;
 
@@ -291,17 +285,15 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
         cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
         cmsXYZ2xyY(&bufxyY, &bufXYZ);
 
-        double pixOut[3];
-        QColor bufout;
+        float pixOut[3];
 
         cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
-        bufout.setRedF(pixOut[0]);
-        bufout.setGreenF(pixOut[1]);
-        bufout.setBlueF(pixOut[2]);
+
+        const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
 
         const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
 
-        return ColorPoint(output, bufout);
+        return ColorPoint(output, outRGB);
     };
 
     QFutureWatcher<ColorPoint> futureTmp;
@@ -415,17 +407,15 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
         cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
         cmsXYZ2xyY(&bufxyY, &bufXYZ);
 
-        double pixOut[3];
-        QColor bufout;
+        float pixOut[3];
 
         cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
-        bufout.setRedF(pixOut[0]);
-        bufout.setGreenF(pixOut[1]);
-        bufout.setBlueF(pixOut[2]);
+
+        const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
 
         const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
 
-        return ColorPoint(output, bufout);
+        return ColorPoint(output, outRGB);
     };
 
     QFutureWatcher<ColorPoint> futureTmp;

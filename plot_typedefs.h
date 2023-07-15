@@ -9,7 +9,13 @@ typedef struct {
     double Z;
 } ImageXYZDouble;
 
-typedef QPair<ImageXYZDouble, QColor> ColorPoint;
-typedef QPair<QPointF, QColor> ColorPointMapped;
+typedef struct {
+    float R;
+    float G;
+    float B;
+} ImageRGBFloat;
+
+typedef QPair<ImageXYZDouble, ImageRGBFloat> ColorPoint;
+typedef QPair<QPointF, QColor> ColorPointMapped; // this one is unused
 
 #endif // PLOT_TYPEDEFS_H

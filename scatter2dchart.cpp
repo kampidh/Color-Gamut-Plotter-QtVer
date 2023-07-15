@@ -378,10 +378,15 @@ void Scatter2dChart::drawDataPoints()
             }();
 
             const QColor col = [&]() {
+                // How do you initiate QColor directly to extended rgb...
+                QColor temp;
+                QColor temp2 = temp.toExtendedRgb();
                 if (d->isDownscaled) {
-                    return QColor(chunk.first.at(i)->second.red(), chunk.first.at(i)->second.green(), chunk.first.at(i)->second.blue(), 160);
+                    temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, 160.0/255.0);
+                    return temp2;
                 }
-                return QColor(chunk.first.at(i)->second.red(), chunk.first.at(i)->second.green(), chunk.first.at(i)->second.blue(), d->m_pointOpacity);
+                temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity/255.0);
+                return temp2;
             }();
 
             tempPainterMap.setBrush(col);
@@ -769,7 +774,7 @@ void Scatter2dChart::drawLabels()
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
                                      QString::number(d->m_cPoints->size()),
                                      QString::number(d->m_lastDrawnParticles),
-                                     QString(!d->finishedRender ? "rendering..." : "rendered"));
+                                     QString(!d->isDownscaled ? !d->finishedRender ? "rendering..." : "rendered" : "draft"));
 
     fullLegends += legends;
 
