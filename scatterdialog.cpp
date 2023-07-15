@@ -41,7 +41,7 @@ public:
     QImage m_inImage;
     QString m_fName;
     QString m_profileName;
-    QVector2D m_wtpt;
+    QVector3D m_wtpt;
     int m_plotType{0};
     int m_plotDensity{0};
     Q3DScatter *m_graph;
@@ -130,7 +130,7 @@ bool ScatterDialog::startParse()
 
     QVector<ImageXYZDouble> outGamut = *d->parsedImg.getOuterGamut();
     d->m_profileName = d->parsedImg.getProfileName();
-    d->m_wtpt = d->parsedImg.getWhitePointXY();
+    d->m_wtpt = d->parsedImg.getWhitePointXYY();
 
     if (d->m_is2d) {
         d->m_2dScatter = new Scatter2dChart();
@@ -173,7 +173,7 @@ bool ScatterDialog::startParse()
             tmp += "None (Assumed as sRGB)";
         }
         tmp += "<br><b>Profile white:</b> ";
-        const QVector2D wtpt = d->m_wtpt;
+        const QVector3D wtpt = d->m_wtpt;
         tmp += "x: " + QString::number(wtpt.x()) + " | y: " + QString::number(wtpt.y());
         return tmp;
     }();

@@ -34,6 +34,8 @@ inline double value(const T src)
     return (double(src) / double(std::numeric_limits<T>::max()));
 }
 
+const static float adaptationState = 0.0;
+
 class Q_DECL_HIDDEN ImageParserSC::Private
 {
 public:
@@ -74,7 +76,7 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
     d->m_dimension = QSize(imgIn.size());
 
     // Do not adapt to illuminant on Absolute Colorimetric
-    cmsSetAdaptationState(0.0);
+    cmsSetAdaptationState(adaptationState);
 
     const cmsHPROFILE hsIMG = cmsOpenProfileFromMem(imRawIcc.data(), imRawIcc.size());
     const cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
@@ -199,7 +201,7 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
 
     d->m_rawImageByte = reinterpret_cast<const quint8 *>(rawData.constData());
 
-    cmsSetAdaptationState(0.0);
+    cmsSetAdaptationState(adaptationState);
 
     const cmsHPROFILE hsIMG = cmsOpenProfileFromMem(iccData.data(), iccData.size());
     const cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
@@ -511,9 +513,9 @@ QString ImageParserSC::getProfileName()
     return d->m_profileName;
 }
 
-QVector2D ImageParserSC::getWhitePointXY()
+QVector3D ImageParserSC::getWhitePointXYY()
 {
-    return QVector2D(d->m_prfWtpt.x(), d->m_prfWtpt.y());
+    return QVector3D(d->m_prfWtpt.x(), d->m_prfWtpt.y(), d->m_prfWtpt.z());
 }
 
 QVector<ImageXYZDouble> *ImageParserSC::getXYYArray() const

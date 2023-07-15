@@ -22,7 +22,6 @@ static const double spectral_chromaticity[81][2] = {
     {0.7347, 0.2653}, {0.7347, 0.2653} // 780 nm
 };
 
-
 /*
  * MacAdam elipses constant, referenced from Colour Science
  * https://github.com/colour-science/colour
@@ -90,7 +89,49 @@ static const double MacAdam_ellipses[25][8] = {
     {0.441, 0.198, 2.80, 0.95, 34.5, 2.73, 0.90, 33.7},
     {0.278, 0.223, 2.40, 0.55, 57.5, 2.34, 0.61, 60.3},
     {0.300, 0.163, 2.90, 0.60, 54.0, 3.01, 0.60, 53.4},
-    {0.365, 0.153, 3.60, 0.95, 40.0, 4.12, 0.90, 38.6},
+    {0.365, 0.153, 3.60, 0.95, 40.0, 4.12, 0.90, 38.6}
+};
+
+/*
+ * ColorChecker / Macbeth chart
+ *
+ * References:
+ * https://poynton.ca/notes/color/GretagMacbeth-ColorChecker.html
+ * or
+ * https://en.wikipedia.org/wiki/ColorChecker
+ */
+static const double Macbeth_chart[24][3] = {
+    // Natural colors
+    {0.400, 0.350, 0.101},
+    {0.377, 0.345, 0.358},
+    {0.247, 0.251, 0.193},
+    {0.337, 0.422, 0.133},
+    {0.265, 0.240, 0.243},
+    {0.261, 0.343, 0.431},
+
+    // Miscellaneous colors
+    {0.506, 0.407, 0.301},
+    {0.211, 0.175, 0.120},
+    {0.453, 0.306, 0.198},
+    {0.285, 0.202, 0.066},
+    {0.380, 0.489, 0.443},
+    {0.473, 0.438, 0.431},
+
+    // Primary and secondary colors
+    {0.187, 0.129, 0.061},
+    {0.305, 0.478, 0.234},
+    {0.539, 0.313, 0.120},
+    {0.448, 0.470, 0.591},
+    {0.364, 0.233, 0.198},
+    {0.196, 0.252, 0.198},
+
+    // Grayscale colors
+    {0.310, 0.316, 0.900},
+    {0.310, 0.316, 0.591},
+    {0.310, 0.316, 0.362},
+    {0.310, 0.316, 0.198},
+    {0.310, 0.316, 0.090},
+    {0.310, 0.316, 0.031},
 };
 
 #endif // CONSTANT_DATASET_H

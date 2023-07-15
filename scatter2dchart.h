@@ -30,7 +30,7 @@ public:
     ~Scatter2dChart();
 
     void addDataPoints(QVector<ColorPoint> &dArray, int size = 100);
-    void addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector2D &dWhitePoint);
+    void addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector3D &dWhitePoint);
     void resetCamera();
     QPixmap *getFullPixmap();
 
@@ -73,6 +73,7 @@ private:
     void drawSrgbTriangle();
     void drawGamutTriangleWP();
     void drawMacAdamEllipses();
+    void drawColorCheckerPoints();
     void drawGrids();
     void drawLabels();
     void doUpdate();

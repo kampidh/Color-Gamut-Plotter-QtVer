@@ -23,7 +23,7 @@ public:
     void inputFile(const QImage &imgIn, int size, QVector<ColorPoint> *outCp);
     void inputFile(const QByteArray &rawData, const QByteArray &iccData, ImageColorDepthID depthId, QSize imgSize, int size, QVector<ColorPoint> *outCp);
     QString getProfileName();
-    QVector2D getWhitePointXY();
+    QVector3D getWhitePointXYY();
     QVector<ImageXYZDouble> *getXYYArray() const;
     QVector<ImageXYZDouble> *getOuterGamut() const;
     QVector<QColor> *getQColorArray() const;

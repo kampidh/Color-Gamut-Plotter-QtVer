@@ -34,6 +34,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <lcms2.h>
+
 #include "constant_dataset.h"
 #include "scatter2dchart.h"
 
@@ -61,7 +63,7 @@ public:
     QPixmap m_ScatterPixmap;
     QPixmap m_ScatterTempPixmap;
     QVector<ImageXYZDouble> m_dOutGamut;
-    QVector2D m_dWhitePoint;
+    QVector3D m_dWhitePoint;
     int m_particleSize{0};
     int m_particleSizeStored{0};
     int m_drawnParticles{0};
@@ -91,6 +93,7 @@ public:
     QMutex m_locker;
 
     QVector<ColorPoint> *m_cPoints;
+    QVector<cmsCIExyY> m_adaptedColorChecker;
     int m_idealThrCount = 0;
 
     QAction *setZoom;
@@ -102,6 +105,7 @@ public:
     QAction *drawSrgbGamut;
     QAction *drawImgGamut;
     QAction *drawMacAdamEllipses;
+    QAction *drawColorCheckerPoints;
     QAction *setStaticDownscale;
     QAction *setAlpha;
     QAction *setAntiAliasing;
@@ -118,6 +122,7 @@ public:
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
     bool enableMacAdamEllipses{false};
+    bool enableColorCheckerPoints{false};
     bool enableStaticDownscale{false};
     bool enableAA{false};
     bool enableStats{false};
@@ -171,11 +176,16 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawImgGamut->setChecked(d->enableImgGamut);
     connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawMacAdamEllipses = new QAction("Draw MacAdam Ellipses");
+    d->drawMacAdamEllipses = new QAction("Draw MacAdam ellipses");
     d->drawMacAdamEllipses->setToolTip("Draw in both normal, and 10x size as depicted in MacAdam's paper.");
     d->drawMacAdamEllipses->setCheckable(true);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
     connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawColorCheckerPoints = new QAction("Draw ColorChecker points");
+    d->drawColorCheckerPoints->setCheckable(true);
+    d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
+    connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     d->setStaticDownscale = new QAction("Use static downscaling");
     d->setStaticDownscale->setCheckable(true);
@@ -256,10 +266,34 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
     }
 }
 
-void Scatter2dChart::addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector2D &dWhitePoint)
+void Scatter2dChart::addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector3D &dWhitePoint)
 {
     d->m_dOutGamut = dOutGamut;
     d->m_dWhitePoint = dWhitePoint;
+
+    const cmsCIExyY prfWPxyY{d->m_dWhitePoint.x(), d->m_dWhitePoint.y(), d->m_dWhitePoint.z()};
+    const cmsCIExyY ccWPxyY{Macbeth_chart[18][0], Macbeth_chart[18][1], Macbeth_chart[18][2]};
+
+    d->m_adaptedColorChecker.clear();
+
+    cmsCIEXYZ prfWPXYZ;
+    cmsCIEXYZ ccWPXYZ;
+
+    cmsxyY2XYZ(&prfWPXYZ, &prfWPxyY);
+    cmsxyY2XYZ(&ccWPXYZ, &ccWPxyY);
+
+    for (int i = 0; i < 24; i++) {
+        const cmsCIExyY srcxyY{Macbeth_chart[i][0], Macbeth_chart[i][1], Macbeth_chart[i][2]};
+        cmsCIEXYZ srcXYZ;
+        cmsCIEXYZ destXYZ;
+        cmsCIExyY destxyY;
+
+        cmsxyY2XYZ(&srcXYZ, &srcxyY);
+        cmsAdaptToIlluminant(&destXYZ, &ccWPXYZ, &prfWPXYZ, &srcXYZ);
+
+        cmsXYZ2xyY(&destxyY, &destXYZ);
+        d->m_adaptedColorChecker.append({destxyY.x, destxyY.y, destxyY.Y});
+    }
 }
 
 QPointF Scatter2dChart::mapPoint(QPointF xy) const
@@ -506,9 +540,11 @@ void Scatter2dChart::drawDataPoints()
     }
 
     if (d->isDownscaled) {
-        const auto out = paintInChunk(fragmentedColPoints.at(0));
-        d->m_ScatterTempPixmap = out.first;
-        d->m_painter.drawPixmap(d->m_pixmap.rect(), out.first);
+        if (!fragmentedColPoints.isEmpty()) {
+            const auto out = paintInChunk(fragmentedColPoints.at(0));
+            d->m_ScatterTempPixmap = out.first;
+            d->m_painter.drawPixmap(d->m_pixmap.rect(), out.first);
+        }
         d->finishedRender = false;
         d->m_lastDrawnParticles = d->m_drawnParticles;
     } else {
@@ -679,6 +715,62 @@ void Scatter2dChart::drawMacAdamEllipses()
     d->m_painter.restore();
 }
 
+void Scatter2dChart::drawColorCheckerPoints()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    QPen pn;
+    pn.setColor(Qt::white);
+    pn.setWidthF(1.0);
+
+    QPen pnOuter;
+    pnOuter.setColor(Qt::black);
+    pnOuter.setWidthF(2.0);
+
+    d->m_painter.setBrush(QColor(0, 0, 0, 200));
+    d->m_painter.setPen(pn);
+
+    QVector<QLineF> cross = {{-10.0, 0.0, 10.0, 0.0}, {0.0, -10.0, 0.0, 10.0}};
+
+    d->m_painter.setFont(QFont("Courier New", 12.0, QFont::Bold));
+
+    for (int i = 0; i < 24; i++) {
+        const QPointF centerCol = mapPoint({d->m_adaptedColorChecker.at(i).x, d->m_adaptedColorChecker.at(i).y});
+
+        d->m_painter.resetTransform();
+        d->m_painter.translate(centerCol);
+
+        d->m_painter.setPen(pnOuter);
+        d->m_painter.drawLines(cross);
+
+        d->m_painter.setPen(pn);
+        d->m_painter.drawLines(cross);
+
+        if (i < 18) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1), &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1));
+        } else if (i == 18) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24", &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24");
+        }
+    }
+    d->m_painter.resetTransform();
+
+    d->m_painter.restore();
+}
+
 void Scatter2dChart::drawGrids()
 {
     d->m_painter.save();
@@ -703,7 +795,7 @@ void Scatter2dChart::drawGrids()
     subGrid.setColor(QColor(128, 128, 128, 64));
     subGrid.setStyle(Qt::DotLine);
 
-    d->m_painter.setFont(QFont("Courier", (d->m_zoomRatio * 12.0), QFont::Medium));
+    d->m_painter.setFont(QFont("Courier New", (d->m_zoomRatio * 12.0), QFont::Medium));
     d->m_painter.setBrush(Qt::transparent);
 
     const float labelBias = -0.02;
@@ -824,16 +916,25 @@ void Scatter2dChart::doUpdate()
         drawGrids();
         drawSpectralLine();
     }
+
     drawDataPoints();
+
     if (d->enableSrgbGamut) {
         drawSrgbTriangle();
     }
+
     if (d->enableImgGamut) {
         drawGamutTriangleWP();
     }
+
     if (d->enableMacAdamEllipses) {
         drawMacAdamEllipses();
     }
+
+    if (d->enableColorCheckerPoints) {
+        drawColorCheckerPoints();
+    }
+
     if (d->enableLabels) {
         drawLabels();
     }
@@ -1144,6 +1245,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(d->drawSrgbGamut);
     menu.addAction(d->drawImgGamut);
     menu.addAction(d->drawMacAdamEllipses);
+    menu.addAction(d->drawColorCheckerPoints);
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
     menu.addAction(d->setAlpha);
@@ -1258,6 +1360,7 @@ void Scatter2dChart::changeProperties()
     d->enableSrgbGamut = d->drawSrgbGamut->isChecked();
     d->enableImgGamut = d->drawImgGamut->isChecked();
     d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();
+    d->enableColorCheckerPoints = d->drawColorCheckerPoints->isChecked();
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
     d->enableStats = d->drawStats->isChecked();
