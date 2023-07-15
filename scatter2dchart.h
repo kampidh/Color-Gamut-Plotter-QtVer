@@ -29,6 +29,7 @@ public:
     explicit Scatter2dChart(QWidget *parent = nullptr);
     ~Scatter2dChart();
 
+    void overrideSettings(PlotSetting2D &plot);
     void addDataPoints(QVector<ColorPoint> &dArray, int size = 100);
     void addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector3D &dWhitePoint);
     void resetCamera();

@@ -21,6 +21,7 @@ public:
 public Q_SLOTS:
     void goPlot();
     void openFileName();
+    void displayOverrideOpts(int ndx);
 
 private:
     void dragEnterEvent(QDragEnterEvent *event);

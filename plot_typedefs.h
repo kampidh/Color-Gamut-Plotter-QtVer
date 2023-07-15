@@ -18,4 +18,17 @@ typedef struct {
 typedef QPair<ImageXYZDouble, ImageRGBFloat> ColorPoint;
 typedef QPair<QPointF, QColor> ColorPointMapped; // this one is unused
 
+typedef struct {
+    bool enableAA;
+    bool disableDynPanning;
+    bool showStatistics;
+    bool showGridsAndSpectrum;
+    bool showsRGBGamut;
+    bool showImageGamut;
+    bool showMacAdamEllipses;
+    bool showColorCheckerPoints;
+    double particleOpacity;
+    int particleSize;
+} PlotSetting2D;
+
 #endif // PLOT_TYPEDEFS_H

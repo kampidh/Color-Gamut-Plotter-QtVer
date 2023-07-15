@@ -58,6 +58,7 @@ public:
     bool inputScatterData{true};
     bool finishedRender{false};
     bool isCancelFired{false};
+    bool isSettingOverride{false};
     QPainter m_painter;
     QPixmap m_pixmap;
     QPixmap m_ScatterPixmap;
@@ -187,7 +188,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->setStaticDownscale = new QAction("Use static downscaling");
+    d->setStaticDownscale = new QAction("Disable dynamic panning");
     d->setStaticDownscale->setCheckable(true);
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
     connect(d->setStaticDownscale, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -213,7 +214,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->saveSlicesAsImage = new QAction("Save Y slices as image...");
     connect(d->saveSlicesAsImage, &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
 
-    d->drawStats = new QAction("Show stats on statistics");
+    d->drawStats = new QAction("Show extras on statistics");
     d->drawStats->setCheckable(true);
     d->drawStats->setChecked(d->enableStats);
     connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -234,11 +235,35 @@ Scatter2dChart::~Scatter2dChart()
     delete d;
 }
 
+void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
+{
+    d->enableAA = plot.enableAA;
+    d->enableStaticDownscale = plot.disableDynPanning;
+    d->enableLabels = plot.showStatistics;
+    d->enableGrids = plot.showGridsAndSpectrum;
+    d->enableSrgbGamut = plot.showsRGBGamut;
+    d->enableImgGamut = plot.showImageGamut;
+    d->enableMacAdamEllipses = plot.showMacAdamEllipses;
+    d->enableColorCheckerPoints = plot.showColorCheckerPoints;
+    d->m_pointOpacity = std::round(plot.particleOpacity * 255.0);
+    d->m_particleSize = plot.particleSize;
+    d->m_particleSizeStored = plot.particleSize;
+
+    d->drawLabels->setChecked(d->enableLabels);
+    d->drawGrids->setChecked(d->enableGrids);
+    d->drawSrgbGamut->setChecked(d->enableSrgbGamut);
+    d->drawImgGamut->setChecked(d->enableImgGamut);
+    d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
+    d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
+    d->setStaticDownscale->setChecked(d->enableStaticDownscale);
+    d->setAntiAliasing->setChecked(d->enableAA);
+
+    d->isSettingOverride = true;
+}
+
 void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
 {
     d->needUpdatePixmap = true;
-    d->m_particleSize = size;
-    d->m_particleSizeStored = size;
     d->m_neededParticles = dArray.size();
 
     // set alpha based on numpoints
@@ -257,12 +282,16 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
     d->m_minY = min;
     d->m_maxY = max;
 
-    d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
-
     if (d->m_cPoints->size() > adaptiveIterMaxPixels) {
         d->adaptiveIterVal = d->m_cPoints->size() / adaptiveIterMaxPixels;
     } else {
         d->adaptiveIterVal = 1;
+    }
+
+    if (!d->isSettingOverride) {
+        d->m_particleSize = size;
+        d->m_particleSizeStored = size;
+        d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
     }
 }
 

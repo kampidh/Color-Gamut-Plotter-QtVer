@@ -50,7 +50,9 @@ public:
     Scatter2dChart *m_2dScatter;
     bool m_is2d{false};
     bool m_isFullscreen{false};
+    bool m_overrideSettings{false};
     QSize m_lastSize;
+    PlotSetting2D m_plotSetting;
 
     QVector<ColorPoint> inputImg;
     ImageParserSC parsedImg;
@@ -83,6 +85,12 @@ void ScatterDialog::closeEvent(QCloseEvent *event)
     if (d->m_is2d) {
         d->m_2dScatter->cancelRender();
     }
+}
+
+void ScatterDialog::overrideSettings(const PlotSetting2D &plot)
+{
+    d->m_plotSetting = plot;
+    d->m_overrideSettings = true;
 }
 
 bool ScatterDialog::startParse()
@@ -134,6 +142,9 @@ bool ScatterDialog::startParse()
 
     if (d->m_is2d) {
         d->m_2dScatter = new Scatter2dChart();
+        if (d->m_overrideSettings) {
+            d->m_2dScatter->overrideSettings(d->m_plotSetting);
+        }
         d->m_2dScatter->addDataPoints(d->inputImg, 2);
         d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
         layout()->replaceWidget(container, d->m_2dScatter);

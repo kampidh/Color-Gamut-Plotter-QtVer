@@ -8,7 +8,8 @@
 #define SCATTERDIALOG_H
 
 #include "./ui_scatterdialog.h"
-#include "imageparsersc.h"
+#include "plot_typedefs.h"
+
 #include <QWidget>
 
 class ScatterDialog : public QWidget, public Ui::ScatterDialog
@@ -19,6 +20,7 @@ public:
     ~ScatterDialog();
 
     bool startParse();
+    void overrideSettings(const PlotSetting2D &plot);
 
     void savePlotImage();
     void resetWinDimension();

@@ -10,6 +10,7 @@
 #include "mainwindow.h"
 #include "qevent.h"
 #include "scatterdialog.h"
+#include "plot_typedefs.h"
 
 //#include <QEvent>
 #include <QDebug>
@@ -33,8 +34,17 @@ MainWindow::MainWindow(QWidget *parent)
     setupUi(this);
     setAcceptDrops(true);
 
+    if (plotTypeCmb->currentIndex() == 2) {
+        override2dChk->setVisible(true);
+    } else {
+        override2dChk->setVisible(false);
+    }
+
     connect(plotBtn, &QPushButton::clicked, this, &MainWindow::goPlot);
     connect(fnameOpenBtn, &QPushButton::clicked, this, &MainWindow::openFileName);
+    connect(plotTypeCmb, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::displayOverrideOpts);
+
+    adjustSize();
 }
 
 MainWindow::~MainWindow()
@@ -56,6 +66,19 @@ void MainWindow::dropEvent(QDropEvent *event)
 {
     event->accept();
     fnameFieldTxt->setText(event->mimeData()->urls()[0].toLocalFile());
+}
+
+void MainWindow::displayOverrideOpts(int ndx)
+{
+    if (ndx == 2) {
+        override2dChk->setVisible(true);
+    } else {
+        override2dChk->setVisible(false);
+    }
+
+    resize({100,100});
+
+    adjustSize();
 }
 
 void MainWindow::openFileName()
@@ -133,11 +156,30 @@ void MainWindow::goPlot()
     }();
 
     d->sc = new ScatterDialog(fileName, plotTypeIndex, plotDensity);
+
+    if (override2dChk->isChecked() && plotTypeIndex == 2) {
+        const PlotSetting2D plotSet{
+            enableAAChk->isChecked(),
+            disableDynamicPanChk->isChecked(),
+            showStatChk->isChecked(),
+            showGridsChk->isChecked(),
+            showsRGBChk->isChecked(),
+            showImgGamutChk->isChecked(),
+            showMacAdamECHk->isChecked(),
+            showColorCheckChk->isChecked(),
+            particleAlphaSpn->value(),
+            particleSizeSpn->value()
+        };
+
+        d->sc->overrideSettings(plotSet);
+    }
+
     if (!d->sc->startParse()) {
         delete d->sc;
         plotBtn->setEnabled(true);
         return;
     }
+
     plotBtn->setEnabled(true);
     d->sc->show();
 
