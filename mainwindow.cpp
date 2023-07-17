@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QScreen>
+#include <QWindow>
 
 #include <QFloat16>
 
@@ -185,6 +186,10 @@ void MainWindow::goPlot()
     plotBtn->setEnabled(true);
     d->sc->show();
 
+    const QScreen *currentWin = window()->windowHandle()->screen();
+    const QSize screenSize = currentWin->size();
+
+    d->sc->resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
     const QPoint midpos(d->sc->frameSize().width() / 2, d->sc->frameSize().height() / 2);
-    d->sc->move(QGuiApplication::screens().at(0)->geometry().center() - midpos);
+    d->sc->move(currentWin->geometry().center() - midpos);
 }
