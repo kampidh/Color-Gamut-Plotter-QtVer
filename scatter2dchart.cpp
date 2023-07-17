@@ -396,6 +396,7 @@ Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds() const
 
 void Scatter2dChart::drawDataPoints()
 {
+    // TODO: kinda spaghetti here...
 
     // prepare window dimension
     const RenderBounds rb = getRenderBounds();
@@ -406,14 +407,18 @@ void Scatter2dChart::drawDataPoints()
 
 
     // calculate an estimate how much points is needed for onscreen rendering
-    d->m_neededParticles = 0;
-    for (int i = 0; i < d->m_cPoints->size(); i += d->adaptiveIterVal) {
-        if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
-            && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
-            d->m_neededParticles++;
+    if (d->isDownscaled || d->inputScatterData || d->renderSlices) {
+        d->m_neededParticles = 0;
+        for (int i = 0; i < d->m_cPoints->size(); i += d->adaptiveIterVal) {
+            if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
+                && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
+                d->m_neededParticles++;
+            }
         }
+        d->m_neededParticles = d->m_neededParticles * d->adaptiveIterVal;
+    } else {
+        d->m_neededParticles = d->m_cPoints->size();
     }
-    d->m_neededParticles = d->m_neededParticles * d->adaptiveIterVal;
 
     const int pixmapPixSize = pixmapH * pixmapW;
 
