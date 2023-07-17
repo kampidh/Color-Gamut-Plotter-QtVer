@@ -313,13 +313,20 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
 
         cmsCIEXYZ bufXYZ;
         cmsCIExyY bufxyY;
-
-        cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
         float pixOut[3];
 
-        cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
+        if (pix[0] == 0.0 && pix[1] == 0.0 && pix[2] == 0.0) {
+            bufxyY.x = d->m_prfWtpt.x();
+            bufxyY.y = d->m_prfWtpt.y();
+            bufxyY.Y = 0.0;
+            pixOut[0] = 0.0;
+            pixOut[1] = 0.0;
+            pixOut[2] = 0.0;
+        } else {
+            cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+            cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
+        }
 
         const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
 //        const ImageRGBFloat outRGB{static_cast<float>(pix[0]), static_cast<float>(pix[1]), static_cast<float>(pix[2])};
@@ -328,6 +335,16 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
 
         return ColorPoint(output, outRGB);
     };
+
+    const cmsCIExyY profileWtpt = [&]() {
+        const double white[3] = {1.0, 1.0, 1.0};
+        cmsCIEXYZ bufXYZ;
+        cmsCIExyY bufxyY;
+        cmsDoTransform(imgtoxyz, &white, &bufXYZ, 1);
+        cmsXYZ2xyY(&bufxyY, &bufXYZ);
+        return bufxyY;
+    }();
+    d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
     QFutureWatcher<ColorPoint> futureTmp;
 
@@ -354,16 +371,6 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
     for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
         d->m_outCp->append(*it);
     }
-
-    const cmsCIExyY profileWtpt = [&]() {
-        const double white[3] = {1.0, 1.0, 1.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(imgtoxyz, &white, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-        return bufxyY;
-    }();
-    d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
     const int sampleNum = 100;
     for (int i = 0; i < 3; i++) {
@@ -436,13 +443,20 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
 
         cmsCIEXYZ bufXYZ;
         cmsCIExyY bufxyY;
-
-        cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
         float pixOut[3];
 
-        cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
+        if (pix[0] == 0.0 && pix[1] == 0.0 && pix[2] == 0.0) {
+            bufxyY.x = d->m_prfWtpt.x();
+            bufxyY.y = d->m_prfWtpt.y();
+            bufxyY.Y = 0.0;
+            pixOut[0] = 0.0;
+            pixOut[1] = 0.0;
+            pixOut[2] = 0.0;
+        } else {
+            cmsDoTransform(imgtoxyz, &pix, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+            cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
+        }
 
         const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
 //        const ImageRGBFloat outRGB{static_cast<float>(pix[0]), static_cast<float>(pix[1]), static_cast<float>(pix[2])};
@@ -451,6 +465,16 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
 
         return ColorPoint(output, outRGB);
     };
+
+    const cmsCIExyY profileWtpt = [&]() {
+        const double white[3] = {1.0, 1.0, 1.0};
+        cmsCIEXYZ bufXYZ;
+        cmsCIExyY bufxyY;
+        cmsDoTransform(imgtoxyz, &white, &bufXYZ, 1);
+        cmsXYZ2xyY(&bufxyY, &bufXYZ);
+        return bufxyY;
+    }();
+    d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
     QFutureWatcher<ColorPoint> futureTmp;
 
@@ -477,16 +501,6 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
     for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
         d->m_outCp->append(*it);
     }
-
-    const cmsCIExyY profileWtpt = [&]() {
-        const double white[3] = {1.0, 1.0, 1.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(imgtoxyz, &white, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-        return bufxyY;
-    }();
-    d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
     const int sampleNum = 100;
     for (int i = 0; i < 3; i++) {
