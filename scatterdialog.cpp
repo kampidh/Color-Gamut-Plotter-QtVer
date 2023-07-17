@@ -147,6 +147,9 @@ bool ScatterDialog::startParse()
         }
         d->m_2dScatter->addDataPoints(d->inputImg, 2);
         d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
+        if (QByteArray *cs = d->parsedImg.getRawICC()) {
+            d->m_2dScatter->addColorSpace(*cs);
+        }
         layout()->replaceWidget(container, d->m_2dScatter);
         orthogonalViewChk->setVisible(false);
     }
@@ -243,7 +246,7 @@ void ScatterDialog::savePlotImage()
         out = d->m_3dScatter->renderToImage(8);
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
-            out = d->m_2dScatter->getFullPixmap()->toImage();
+            out = *d->m_2dScatter->getFullPixmap();
         }
     }
 

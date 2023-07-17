@@ -27,6 +27,7 @@ public:
     QVector<ImageXYZDouble> *getXYYArray() const;
     QVector<ImageXYZDouble> *getOuterGamut() const;
     QVector<QColor> *getQColorArray() const;
+    QByteArray *getRawICC() const;
 
     bool isMatchSrgb();
 

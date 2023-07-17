@@ -32,8 +32,9 @@ public:
     void overrideSettings(PlotSetting2D &plot);
     void addDataPoints(QVector<ColorPoint> &dArray, int size = 100);
     void addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector3D &dWhitePoint);
+    void addColorSpace(QByteArray &rawICCProfile);
     void resetCamera();
-    QPixmap *getFullPixmap();
+    QImage *getFullPixmap();
 
     void cancelRender();
 

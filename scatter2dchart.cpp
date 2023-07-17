@@ -18,6 +18,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QColorDialog>
+#include <QColorSpace>
 #include <QDebug>
 #include <QFileDialog>
 #include <QFuture>
@@ -46,6 +47,14 @@ static const int adaptiveIterMaxRenderedPoints = 25000;
 // Hard limit before switching to bucket rendering
 static const int maxPixelsBeforeBucket = 4000000;
 
+/*
+ * Data point rendering modes:
+ * - Bucket, mostly slower but lighter in RAM
+ * - Progressive, mostly faster but RAM heavy especially with large upscaling
+ */
+static const int bucketDefaultSize = 256;
+static const int bucketDownscaledSize = 1024;
+
 class Q_DECL_HIDDEN Scatter2dChart::Private
 {
 public:
@@ -60,9 +69,9 @@ public:
     bool isCancelFired{false};
     bool isSettingOverride{false};
     QPainter m_painter;
-    QPixmap m_pixmap;
-    QPixmap m_ScatterPixmap;
-    QPixmap m_ScatterTempPixmap;
+    QImage m_pixmap;
+    QImage m_ScatterPixmap;
+    QImage m_ScatterTempPixmap;
     QVector<ImageXYZDouble> m_dOutGamut;
     QVector3D m_dWhitePoint;
     int m_particleSize{0};
@@ -70,12 +79,12 @@ public:
     int m_drawnParticles{0};
     int m_lastDrawnParticles{0};
     int m_neededParticles{0};
-    int m_pointOpacity{255};
     int adaptiveIterVal{0};
     int m_numberOfSlices{0};
     int m_slicePos{0};
     int m_scatterIndex{0}; // unused?
     qint64 m_msecRenderTime{0};
+    double m_pointOpacity{1.0};
     double m_minY{0.0};
     double m_maxY{1.0};
     double m_zoomRatio{1.1};
@@ -90,6 +99,10 @@ public:
     QElapsedTimer m_renderTimer;
     QFont m_labelFont;
     QColor m_bgColor;
+
+    QColorSpace m_scProfile;
+    QColorSpace m_imageSpace;
+    QImage::Format m_imageFormat;
 
     QMutex m_locker;
 
@@ -115,8 +128,9 @@ public:
     QAction *setBgColor;
     QAction *saveSlicesAsImage;
     QAction *drawStats;
+    QAction *use16Bit;
 
-    QFutureWatcher<QPair<QPixmap, QRect>> m_future;
+    QFutureWatcher<QPair<QImage, QRect>> m_future;
 
     bool enableLabels{true};
     bool enableGrids{true};
@@ -127,6 +141,7 @@ public:
     bool enableStaticDownscale{false};
     bool enableAA{false};
     bool enableStats{false};
+    bool enable16Bit{false};
 
     QClipboard *m_clipb;
 };
@@ -139,6 +154,11 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->m_scrollTimer = new QTimer(this);
     d->m_scrollTimer->setSingleShot(true);
     connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
+
+    // reserved soon
+    d->m_scProfile = QColorSpace::SRgb;
+    d->m_imageSpace = QColorSpace::SRgb;
+    d->m_imageFormat = QImage::Format_ARGB32;
 
     d->m_labelFont = QFont("Courier New", 11, QFont::Medium);
     d->m_bgColor = Qt::black;
@@ -219,6 +239,11 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawStats->setChecked(d->enableStats);
     connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
+    d->use16Bit = new QAction("16 bit per channel");
+    d->use16Bit->setCheckable(true);
+    d->use16Bit->setChecked(d->enable16Bit);
+    connect(d->use16Bit, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
     if (QThread::idealThreadCount() > 1) {
         d->m_idealThrCount = QThread::idealThreadCount();
     } else {
@@ -239,15 +264,18 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
 {
     d->enableAA = plot.enableAA;
     d->enableStaticDownscale = plot.disableDynPanning;
+    d->enable16Bit = plot.use16Bit;
+
     d->enableLabels = plot.showStatistics;
     d->enableGrids = plot.showGridsAndSpectrum;
     d->enableSrgbGamut = plot.showsRGBGamut;
     d->enableImgGamut = plot.showImageGamut;
     d->enableMacAdamEllipses = plot.showMacAdamEllipses;
     d->enableColorCheckerPoints = plot.showColorCheckerPoints;
-    d->m_pointOpacity = std::round(plot.particleOpacity * 255.0);
+    d->m_pointOpacity = plot.particleOpacity;
     d->m_particleSize = plot.particleSize;
     d->m_particleSizeStored = plot.particleSize;
+    d->m_pixmapSize = plot.renderScale;
 
     d->drawLabels->setChecked(d->enableLabels);
     d->drawGrids->setChecked(d->enableGrids);
@@ -257,6 +285,11 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
     d->setAntiAliasing->setChecked(d->enableAA);
+    d->use16Bit->setChecked(d->enable16Bit);
+
+    if (d->enable16Bit) {
+        d->m_imageFormat = QImage::Format_RGBA64;
+    }
 
     d->isSettingOverride = true;
 }
@@ -291,7 +324,7 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
     if (!d->isSettingOverride) {
         d->m_particleSize = size;
         d->m_particleSizeStored = size;
-        d->m_pointOpacity = std::round(alphaLerpToGamma * 255.0);
+        d->m_pointOpacity = alphaLerpToGamma;
     }
 }
 
@@ -325,20 +358,26 @@ void Scatter2dChart::addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector
     }
 }
 
-QPointF Scatter2dChart::mapPoint(QPointF xy) const
+void Scatter2dChart::addColorSpace(QByteArray &rawICCProfile)
+{
+    // reserved
+    // d->m_scProfile = QColorSpace::fromIccProfile(rawICCProfile);
+}
+
+inline QPointF Scatter2dChart::mapPoint(QPointF xy) const
 {
     // Maintain ascpect ratio, otherwise use width() on X
     return QPointF(((xy.x() * d->m_zoomRatio) * d->m_pixmap.height() + d->m_offsetX),
                    ((d->m_pixmap.height() - ((xy.y() * d->m_zoomRatio) * d->m_pixmap.height())) - d->m_offsetY));
 }
 
-QPointF Scatter2dChart::mapScreenPoint(QPointF xy) const
+inline QPointF Scatter2dChart::mapScreenPoint(QPointF xy) const
 {
     return QPointF(((d->m_offsetX - (xy.x() / devicePixelRatioF()) * d->m_pixmapSize) / (d->m_pixmap.height() * 1.0)) / d->m_zoomRatio * -1.0,
                    ((d->m_offsetY - ((height() / devicePixelRatioF()) - (xy.y() / devicePixelRatioF())) * d->m_pixmapSize) / (d->m_pixmap.height() * 1.0)) / d->m_zoomRatio * -1.0);
 }
 
-double Scatter2dChart::oneUnitInPx() const
+inline double Scatter2dChart::oneUnitInPx() const
 {
     return (static_cast<double>(d->m_pixmap.height()) * d->m_zoomRatio);
 }
@@ -354,14 +393,6 @@ Scatter2dChart::RenderBounds Scatter2dChart::getRenderBounds() const
 
     return RenderBounds({originX, originY, maxX, maxY});
 }
-
-/*
- * Data point rendering modes:
- * - Bucket, mostly slower but lighter in RAM
- * - Progressive, mostly faster but RAM heavy especially with large upscaling
- */
-static const int bucketDefaultSize = 512;
-static const int bucketDownscaledSize = 1024;
 
 void Scatter2dChart::drawDataPoints()
 {
@@ -396,10 +427,10 @@ void Scatter2dChart::drawDataPoints()
     const int bucketPadding = d->m_particleSize;
 
     // internal function for painting the chunks concurrently
-    std::function<QPair<QPixmap, QRect>(const QPair<QVector<ColorPoint *>, QRect> &)> const paintInChunk =
-        [&](const QPair<QVector<ColorPoint *>, QRect> &chunk) -> QPair<QPixmap, QRect> {
+    std::function<QPair<QImage, QRect>(const QPair<QVector<ColorPoint *>, QRect> &)> const paintInChunk =
+        [&](const QPair<QVector<ColorPoint *>, QRect> &chunk) -> QPair<QImage, QRect> {
         if (chunk.first.size() == 0) {
-            return {QPixmap(), QRect()};
+            return {QImage(), QRect()};
         }
         const QSize workerDim = [&]() {
             if (d->useBucketRender) {
@@ -408,12 +439,13 @@ void Scatter2dChart::drawDataPoints()
             return d->m_pixmap.size();
         }();
 
-        QPixmap tempMap(workerDim);
+        QImage tempMap(workerDim, d->m_imageFormat);
+        tempMap.setColorSpace(d->m_scProfile);
         tempMap.fill(Qt::transparent);
         QPainter tempPainterMap;
 
         if (!tempPainterMap.begin(&tempMap)) {
-            return {QPixmap(), QRect()};
+            return {QImage(), QRect()};
         }
 
         if (!d->isDownscaled && d->enableAA) {
@@ -445,10 +477,10 @@ void Scatter2dChart::drawDataPoints()
                 QColor temp;
                 QColor temp2 = temp.toExtendedRgb();
                 if (d->isDownscaled) {
-                    temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, 160.0/255.0);
+                    temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, 0.5);
                     return temp2;
                 }
-                temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity/255.0);
+                temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity);
                 return temp2;
             }();
 
@@ -462,6 +494,10 @@ void Scatter2dChart::drawDataPoints()
         }
 
         tempPainterMap.end();
+
+        if (d->m_scProfile != d->m_imageSpace) {
+            tempMap.convertToColorSpace(d->m_imageSpace);
+        }
 
         return {tempMap, chunk.second};
     };
@@ -561,7 +597,7 @@ void Scatter2dChart::drawDataPoints()
         d->m_future.waitForFinished();
         for (auto it = d->m_future.future().constBegin(); it != d->m_future.future().constEnd(); it++) {
             if (!it->first.isNull()) {
-                d->m_painter.drawPixmap(it->second, it->first);
+                d->m_painter.drawImage(it->second, it->first);
             }
         }
         d->m_painter.restore();
@@ -572,7 +608,7 @@ void Scatter2dChart::drawDataPoints()
         if (!fragmentedColPoints.isEmpty()) {
             const auto out = paintInChunk(fragmentedColPoints.at(0));
             d->m_ScatterTempPixmap = out.first;
-            d->m_painter.drawPixmap(d->m_pixmap.rect(), out.first);
+            d->m_painter.drawImage(d->m_pixmap.rect(), out.first);
         }
         d->finishedRender = false;
         d->m_lastDrawnParticles = d->m_drawnParticles;
@@ -583,26 +619,12 @@ void Scatter2dChart::drawDataPoints()
             } else {
                 d->m_painter.setOpacity(0.75);
             }
-            d->m_painter.drawPixmap(d->m_pixmap.rect(), d->m_ScatterTempPixmap);
+            d->m_painter.drawImage(d->m_pixmap.rect(), d->m_ScatterTempPixmap);
             d->m_painter.setOpacity(1);
             d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
         }
 
-        // workaround for Lighten composite mode have broken alpha...
-        if (!d->useBucketRender && d->finishedRender) {
-            QImage tempImage = d->m_ScatterPixmap.toImage();
-            for (int y = 0; y < tempImage.height(); y++) {
-                for (int x = 0; x < tempImage.width(); x++) {
-                    const QColor px = tempImage.pixelColor({x, y});
-                    if (px.red() == 0 && px.green() == 0 && px.blue() == 0 && px.alphaF() < 0.1) {
-                        tempImage.setPixelColor({x, y}, Qt::transparent);
-                    }
-                }
-            }
-            d->m_painter.drawImage(d->m_pixmap.rect(), tempImage);
-        } else {
-            d->m_painter.drawPixmap(d->m_pixmap.rect(), d->m_ScatterPixmap);
-        }
+        d->m_painter.drawImage(d->m_pixmap.rect(), d->m_ScatterPixmap);
     }
 
     d->m_painter.restore();
@@ -921,8 +943,9 @@ void Scatter2dChart::drawLabels()
 void Scatter2dChart::doUpdate()
 {
     d->needUpdatePixmap = false;
-    d->m_pixmap = QPixmap(size() * devicePixelRatioF() * d->m_pixmapSize);
+    d->m_pixmap = QImage(size() * devicePixelRatioF() * d->m_pixmapSize, d->m_imageFormat);
     d->m_pixmap.setDevicePixelRatio(devicePixelRatioF());
+    d->m_pixmap.setColorSpace(d->m_imageSpace);
     d->m_pixmap.fill(d->m_bgColor);
 
     if (d->keepCentered) {
@@ -978,7 +1001,7 @@ void Scatter2dChart::paintEvent(QPaintEvent *)
     if (d->needUpdatePixmap) {
         doUpdate();
     }
-    p.drawPixmap(0, 0, d->m_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    p.drawImage(0, 0, d->m_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (!d->isDownscaled) {
         setCursor(Qt::ArrowCursor);
     }
@@ -995,7 +1018,7 @@ void Scatter2dChart::drawFutureAt(int ft)
     tempPainter.begin(&d->m_ScatterPixmap);
     tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-    tempPainter.drawPixmap(resu.second, resu.first);
+    tempPainter.drawImage(resu.second, resu.first);
 
     tempPainter.end();
 
@@ -1032,7 +1055,7 @@ void Scatter2dChart::whenScrollTimerEnds()
     if (d->isMouseHold)
         return;
     d->inputScatterData = true;
-    d->m_ScatterPixmap = QPixmap(d->m_pixmap.size());
+    d->m_ScatterPixmap = QImage(d->m_pixmap.size(), d->m_imageFormat);
     d->m_ScatterPixmap.fill(Qt::transparent);
 
     d->isDownscaled = false;
@@ -1127,7 +1150,7 @@ void Scatter2dChart::saveSlicesAsImage()
         doUpdate();
 
         const QString outputFile = fileNameTrimmed + tr("_") + QString::number(i).rightJustified(4, '0') + tr(".png");
-        QImage out(d->m_pixmap.toImage());
+        QImage out(d->m_pixmap);
         out.save(outputFile);
         pDial.setValue(i);
     }
@@ -1296,6 +1319,8 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     extra.addSeparator();
     extra.addAction(d->setPixmapSize);
     extra.addAction(d->saveSlicesAsImage);
+    extra.addSeparator();
+    extra.addAction(d->use16Bit);
 
     menu.exec(event->globalPos());
 }
@@ -1370,7 +1395,7 @@ void Scatter2dChart::pasteOrigAndZoom()
             const int setAlpha = parsed.at(3).toInt();
             const int setSize = parsed.at(4).toInt();
 
-            if (setAlpha >= 0 && setAlpha < 256) {
+            if (setAlpha >= 0.001 && setAlpha <= 1.0) {
                 d->m_pointOpacity = setAlpha;
             }
 
@@ -1402,6 +1427,14 @@ void Scatter2dChart::changeProperties()
     d->enableAA = d->setAntiAliasing->isChecked();
     d->enableStats = d->drawStats->isChecked();
 
+    if (d->use16Bit->isChecked()) {
+        d->enable16Bit = true;
+        d->m_imageFormat = QImage::Format_RGBA64;
+    } else if (!d->use16Bit->isChecked()) {
+        d->enable16Bit = false;
+        d->m_imageFormat = QImage::Format_ARGB32;
+    }
+
     drawDownscaled(20);
     d->needUpdatePixmap = true;
     update();
@@ -1410,20 +1443,20 @@ void Scatter2dChart::changeProperties()
 void Scatter2dChart::changeAlpha()
 {
 //    const double currentAlpha = d->m_cPoints.at(0).second.alphaF();
-    const double currentAlpha = d->m_pointOpacity / 255.0;
+    const double currentAlpha = d->m_pointOpacity;
     bool isAlphaOkay(false);
     const double setAlpha = QInputDialog::getDouble(this,
                                                     "Set alpha",
                                                     "Per-particle alpha",
                                                     currentAlpha,
-                                                    0.1,
+                                                    0.001,
                                                     1.0,
-                                                    2,
+                                                    3,
                                                     &isAlphaOkay,
                                                     Qt::WindowFlags(),
                                                     0.1);
     if (isAlphaOkay) {
-        d->m_pointOpacity = std::round(setAlpha * 255.0);
+        d->m_pointOpacity = setAlpha;
 
         drawDownscaled(20);
         d->needUpdatePixmap = true;
@@ -1500,7 +1533,7 @@ void Scatter2dChart::resetCamera()
     update();
 }
 
-QPixmap *Scatter2dChart::getFullPixmap()
+QImage *Scatter2dChart::getFullPixmap()
 {
     if (d->m_future.isRunning()) {
         d->m_future.waitForFinished();

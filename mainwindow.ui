@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>403</width>
-    <height>903</height>
+    <height>951</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -157,6 +157,13 @@
             </widget>
            </item>
            <item>
+            <widget class="QCheckBox" name="use16BitChk">
+             <property name="text">
+              <string>16 bpc</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <spacer name="horizontalSpacer">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>
@@ -257,13 +264,19 @@
            </item>
            <item row="0" column="1">
             <widget class="QDoubleSpinBox" name="particleAlphaSpn">
+             <property name="decimals">
+              <number>3</number>
+             </property>
              <property name="minimum">
-              <double>0.100000000000000</double>
+              <double>0.001000000000000</double>
              </property>
              <property name="maximum">
               <double>1.000000000000000</double>
              </property>
              <property name="singleStep">
+              <double>0.100000000000000</double>
+             </property>
+             <property name="value">
               <double>0.100000000000000</double>
              </property>
             </widget>
@@ -285,6 +298,26 @@
              </property>
              <property name="value">
               <number>2</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="label_8">
+             <property name="text">
+              <string>Render scaling:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="renderScaleSpn">
+             <property name="minimum">
+              <double>1.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>8.000000000000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.100000000000000</double>
              </property>
             </widget>
            </item>

@@ -21,6 +21,7 @@ typedef QPair<QPointF, QColor> ColorPointMapped; // this one is unused
 typedef struct {
     bool enableAA;
     bool disableDynPanning;
+    bool use16Bit;
     bool showStatistics;
     bool showGridsAndSpectrum;
     bool showsRGBGamut;
@@ -29,6 +30,7 @@ typedef struct {
     bool showColorCheckerPoints;
     double particleOpacity;
     int particleSize;
+    double renderScale;
 } PlotSetting2D;
 
 #endif // PLOT_TYPEDEFS_H

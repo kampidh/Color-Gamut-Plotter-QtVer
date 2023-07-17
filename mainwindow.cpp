@@ -161,6 +161,7 @@ void MainWindow::goPlot()
         const PlotSetting2D plotSet{
             enableAAChk->isChecked(),
             disableDynamicPanChk->isChecked(),
+            use16BitChk->isChecked(),
             showStatChk->isChecked(),
             showGridsChk->isChecked(),
             showsRGBChk->isChecked(),
@@ -168,7 +169,8 @@ void MainWindow::goPlot()
             showMacAdamECHk->isChecked(),
             showColorCheckChk->isChecked(),
             particleAlphaSpn->value(),
-            particleSizeSpn->value()
+            particleSizeSpn->value(),
+            renderScaleSpn->value()
         };
 
         d->sc->overrideSettings(plotSet);

@@ -44,6 +44,8 @@ public:
     QVector<ImageXYZDouble> m_outerGamut{};
     QVector3D m_prfWtpt{};
 
+    QByteArray m_rawProfile;
+
     quint8 chR{0};
     quint8 chG{1};
     quint8 chB{2};
@@ -80,9 +82,23 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
 
     const cmsHPROFILE hsIMG = cmsOpenProfileFromMem(imRawIcc.data(), imRawIcc.size());
     const cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
+
+    /*
+     * Reserved in case I need linear / scRGB
+     * maybe Qt 6+ where there will be Float QImage?
+    cmsToneCurve *linTRC = cmsBuildGamma(NULL, 1.0);
+    cmsToneCurve *linrgb[3]{linTRC, linTRC, linTRC};
+    const cmsCIExyY sRgbD65 = {0.3127, 0.3290, 1.0000};
+    const cmsCIExyYTRIPLE srgbPrim = {{0.6400, 0.3300, 0.2126},
+                                      {0.3000, 0.6000, 0.7152},
+                                      {0.1500, 0.0600, 0.0722}};
+    const cmsHPROFILE hLinsRGB = cmsCreateRGBProfile(&sRgbD65, &srgbPrim, linrgb);
+    */
+
     const cmsHPROFILE hsXYZ = cmsCreateXYZProfile();
 
     if (hsIMG) {
+        d->m_rawProfile = imRawIcc;
         cmsUInt32Number tmpSize = 0;
         tmpSize = cmsGetProfileInfo(hsIMG, cmsInfoDescription, cmsNoLanguage, cmsNoCountry, nullptr, 0);
         wchar_t *tmp = new wchar_t[tmpSize];
@@ -205,9 +221,23 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
 
     const cmsHPROFILE hsIMG = cmsOpenProfileFromMem(iccData.data(), iccData.size());
     const cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
+
+    /*
+     * Reserved in case I need linear / scRGB
+     * maybe Qt 6+ where there will be Float QImage?
+    cmsToneCurve *linTRC = cmsBuildGamma(NULL, 1.0);
+    cmsToneCurve *linrgb[3]{linTRC, linTRC, linTRC};
+    const cmsCIExyY sRgbD65 = {0.3127, 0.3290, 1.0000};
+    const cmsCIExyYTRIPLE srgbPrim = {{0.6400, 0.3300, 0.2126},
+                                      {0.3000, 0.6000, 0.7152},
+                                      {0.1500, 0.0600, 0.0722}};
+    const cmsHPROFILE hLinsRGB = cmsCreateRGBProfile(&sRgbD65, &srgbPrim, linrgb);
+    */
+
     const cmsHPROFILE hsXYZ = cmsCreateXYZProfile();
 
     if (hsIMG) {
+        d->m_rawProfile = iccData;
         cmsUInt32Number tmpSize = 0;
         tmpSize = cmsGetProfileInfo(hsIMG, cmsInfoDescription, cmsNoLanguage, cmsNoCountry, nullptr, 0);
         wchar_t *tmp = new wchar_t[tmpSize];
@@ -292,6 +322,7 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
         cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
 
         const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
+//        const ImageRGBFloat outRGB{static_cast<float>(pix[0]), static_cast<float>(pix[1]), static_cast<float>(pix[2])};
 
         const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
 
@@ -414,6 +445,7 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
         cmsDoTransform(xyztosrgb, &bufXYZ, &pixOut, 1);
 
         const ImageRGBFloat outRGB{pixOut[0], pixOut[1], pixOut[2]};
+//        const ImageRGBFloat outRGB{static_cast<float>(pix[0]), static_cast<float>(pix[1]), static_cast<float>(pix[2])};
 
         const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
 
@@ -532,6 +564,14 @@ QVector<ImageXYZDouble> *ImageParserSC::getOuterGamut() const
 QVector<QColor> *ImageParserSC::getQColorArray() const
 {
     // deprecated
+    return nullptr;
+}
+
+QByteArray *ImageParserSC::getRawICC() const
+{
+    if (d->m_rawProfile.size() > 0) {
+        return &d->m_rawProfile;
+    }
     return nullptr;
 }
 
