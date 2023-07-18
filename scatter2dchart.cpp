@@ -73,6 +73,7 @@ public:
     QImage m_ScatterPixmap;
     QImage m_ScatterTempPixmap;
     QVector<ImageXYZDouble> m_dOutGamut;
+    QVector<QVector2D> m_blackbodyLocus;
     QVector3D m_dWhitePoint;
     int m_particleSize{0};
     int m_particleSizeStored{0};
@@ -121,6 +122,7 @@ public:
     QAction *drawImgGamut;
     QAction *drawMacAdamEllipses;
     QAction *drawColorCheckerPoints;
+    QAction *drawBlackbodyLocus;
     QAction *setStaticDownscale;
     QAction *setAlpha;
     QAction *setAntiAliasing;
@@ -139,6 +141,7 @@ public:
     bool enableImgGamut{true};
     bool enableMacAdamEllipses{false};
     bool enableColorCheckerPoints{false};
+    bool enableBlackbodyLocus{false};
     bool enableStaticDownscale{false};
     bool enableAA{false};
     bool enableStats{false};
@@ -209,6 +212,11 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
+    d->drawBlackbodyLocus = new QAction("Planckian locus");
+    d->drawBlackbodyLocus->setCheckable(true);
+    d->drawBlackbodyLocus->setChecked(d->enableBlackbodyLocus);
+    connect(d->drawBlackbodyLocus, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
     d->setStaticDownscale = new QAction("Disable dynamic panning");
     d->setStaticDownscale->setCheckable(true);
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
@@ -251,6 +259,35 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
         d->m_idealThrCount = 1;
     }
 
+    /*
+     *  Planckian locus approximation
+     *
+     *  References:
+     *  Kang, B., Moon, O., Hong, C., Lee, H., Cho, B., & Kim, Y. (2002). Design of advanced color: Temperature control
+     * system for HDTV applications. Journal of the Korean Physical Society, 41(6), 865-871.
+     */
+    for (int i = 1700; i <= 25000; i += 50) {
+        const double temp = static_cast<float>(i);
+        double x;
+        double y;
+
+        if (i <= 4000) {
+            x = (-0.2661239 * (1.0e+9 / std::pow(temp, 3.0))) - (0.2343589 * (1.0e+6 / std::pow(temp, 2.0))) + (0.8776956 * (1.0e+3 / temp)) + 0.179910;
+        } else {
+            x = (-3.0258469 * (1.0e+9 / std::pow(temp, 3.0))) + (2.1070379 * (1.0e+6 / std::pow(temp, 2.0))) + (0.2226347 * (1.0e+3 / temp)) + 0.240390;
+        }
+
+        if (i <= 2222) {
+            y = (-1.1063814 * std::pow(x, 3.0)) - (1.34811020 * std::pow(x, 2.0)) + (2.18555832 * x) - 0.20219683;
+        } else if (i <= 4000) {
+            y = (-0.9549476 * std::pow(x, 3.0)) - (1.37418593 * std::pow(x, 2.0)) + (2.09137015 * x) - 0.16748867;
+        } else {
+            y = (3.0817580 * std::pow(x, 3.0)) - (5.87338670 * std::pow(x, 2.0)) + (3.75112997 * x) - 0.37001483;
+        }
+
+        d->m_blackbodyLocus.append({static_cast<float>(x), static_cast<float>(y)});
+    }
+
     connect(&d->m_future, &QFutureWatcher<void>::resultReadyAt, this, &Scatter2dChart::drawFutureAt);
     connect(&d->m_future, &QFutureWatcher<void>::finished, this, &Scatter2dChart::onFinishedDrawing);
 }
@@ -273,6 +310,8 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
     d->enableImgGamut = plot.showImageGamut;
     d->enableMacAdamEllipses = plot.showMacAdamEllipses;
     d->enableColorCheckerPoints = plot.showColorCheckerPoints;
+    d->enableBlackbodyLocus = plot.showBlBodyLocus;
+
     d->m_pointOpacity = plot.particleOpacity;
     d->m_particleSize = plot.particleSize;
     d->m_particleSizeStored = plot.particleSize;
@@ -284,6 +323,7 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
     d->drawImgGamut->setChecked(d->enableImgGamut);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
+    d->drawBlackbodyLocus->setChecked(d->enableBlackbodyLocus);
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
     d->setAntiAliasing->setChecked(d->enableAA);
     d->use16Bit->setChecked(d->enable16Bit);
@@ -675,9 +715,10 @@ void Scatter2dChart::drawSpectralLine()
     d->m_painter.setPen(pn);
     d->m_painter.setBrush(Qt::transparent);
 
+    d->m_painter.setFont(QFont("Courier New", 8.0));
+
     QPainterPath spectral(mapPoint(QPointF(spectral_chromaticity[0][0], spectral_chromaticity[0][1])));
-    for (int x = 385; x < 700; x += 5) {
-        int i = (x - 380) / 5;
+    for (int i = 1; i < 81; i++) {
         const QPointF specPoint = mapPoint(QPointF(spectral_chromaticity[i][0], spectral_chromaticity[i][1]));
         spectral.lineTo(specPoint);
     }
@@ -691,9 +732,10 @@ void Scatter2dChart::drawSpectralLine()
     d->m_painter.setBrush(Qt::black);
 
     const int labelIter = [&]() {
-        if (d->m_zoomRatio < 1.5) {
+        const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+        if (ratio < 1.5) {
             return 4;
-        } else if (d->m_zoomRatio < 3.0) {
+        } else if (ratio < 3.0) {
             return 2;
         }
         return 1;
@@ -836,10 +878,12 @@ void Scatter2dChart::drawColorCheckerPoints()
 
     QPen pn;
     pn.setColor(Qt::white);
+    pn.setCapStyle(Qt::RoundCap);
     pn.setWidthF(1.0);
 
     QPen pnOuter;
     pnOuter.setColor(Qt::black);
+    pn.setCapStyle(Qt::RoundCap);
     pnOuter.setWidthF(2.0);
 
     d->m_painter.setBrush(QColor(0, 0, 0, 200));
@@ -877,6 +921,120 @@ void Scatter2dChart::drawColorCheckerPoints()
             d->m_painter.drawRect(boundRect);
             d->m_painter.setPen(Qt::white);
             d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24");
+        }
+    }
+    d->m_painter.resetTransform();
+
+    d->m_painter.restore();
+}
+
+void Scatter2dChart::drawBlackbodyLocus()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    QPen pn;
+    pn.setColor(Qt::white);
+    pn.setCapStyle(Qt::RoundCap);
+    pn.setWidthF(1.0);
+
+    QPen pnOuter;
+    pnOuter.setColor(Qt::black);
+    pn.setCapStyle(Qt::RoundCap);
+    pnOuter.setWidthF(2.0);
+
+    d->m_painter.setFont(QFont("Courier New", 10.0));
+
+    d->m_painter.setBrush(Qt::transparent);
+
+    QPainterPath blackbody(mapPoint(QPointF(d->m_blackbodyLocus.at(0).x(), d->m_blackbodyLocus.at(0).y())));
+    for (int i = 1; i < d->m_blackbodyLocus.size(); i++) {
+        const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(i).x(), d->m_blackbodyLocus.at(i).y()));
+        blackbody.lineTo(blbPoint);
+    }
+
+    d->m_painter.setPen(pnOuter);
+    d->m_painter.drawPath(blackbody);
+    d->m_painter.setPen(pn);
+    d->m_painter.drawPath(blackbody);
+
+    d->m_painter.setBrush(Qt::black);
+
+    QLineF markerLong(0, -25, 0, 25);
+    QLineF markerShort(0, -10, 0, 10);
+    QLineF markerShorter(0, -3, 0, 3);
+
+    const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+    const int labelIter = [&]() {
+        if (ratio < 1.5) {
+            return 25000;
+        } else if (ratio < 3.0) {
+            return 500;
+        } else if (ratio < 5.0) {
+            return 100;
+        }
+        return 50;
+    }();
+
+    const QVector<int> majorMarks{2000, 3000, 4000, 5000, 6500, 10000, 15000};
+
+    for (int i = 1700; i <= 25000; i += 50) {
+        const int ix = (i - 1700) / 50;
+        const float theta = std::sqrt(std::fabs(2250.0 - i)) * ((i > 2250) ? -0.5 : 0.5);
+
+        if (majorMarks.contains(i)) {
+            d->m_painter.resetTransform();
+
+            const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(ix).x(), d->m_blackbodyLocus.at(ix).y()));
+            d->m_painter.translate(blbPoint);
+            d->m_painter.rotate(theta);
+            d->m_painter.setPen(pnOuter);
+            d->m_painter.drawLine(markerLong);
+            d->m_painter.setPen(pn);
+            d->m_painter.drawLine(markerLong);
+
+            d->m_painter.rotate(theta * -1.0);
+
+            QRect boundRect;
+            const QString locLabel = QString("%1K").arg(QString::number(i));
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(-10, 30, 100, 100), 0, locLabel, &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(-10, 30, 100, 100), 0, locLabel);
+        }
+
+        if (i % labelIter == 0 && i < 15000 && !majorMarks.contains(i)) {
+            d->m_painter.resetTransform();
+            const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(ix).x(), d->m_blackbodyLocus.at(ix).y()));
+            d->m_painter.translate(blbPoint);
+            d->m_painter.rotate(theta);
+            if (i % 500 == 0) {
+                d->m_painter.setPen(pnOuter);
+                d->m_painter.drawLine(markerShort);
+                d->m_painter.setPen(pn);
+                d->m_painter.drawLine(markerShort);
+
+                d->m_painter.rotate(theta * -1.0);
+
+                if (i < 10000 && ratio >= 5.0) {
+                    QRect boundRect;
+                    const QString locLabel = QString("%1K").arg(QString::number(i));
+                    d->m_painter.setPen(Qt::white);
+                    d->m_painter.drawText(QRect(-10, 20, 100, 100), 0, locLabel, &boundRect);
+                    d->m_painter.setPen(Qt::NoPen);
+                    d->m_painter.drawRect(boundRect);
+                    d->m_painter.setPen(Qt::white);
+                    d->m_painter.drawText(QRect(-10, 20, 100, 100), 0, locLabel);
+                }
+            } else {
+                d->m_painter.setPen(pnOuter);
+                d->m_painter.drawLine(markerShorter);
+                d->m_painter.setPen(pn);
+                d->m_painter.drawLine(markerShorter);
+            }
         }
     }
     d->m_painter.resetTransform();
@@ -1047,6 +1205,10 @@ void Scatter2dChart::doUpdate()
 
     if (d->enableColorCheckerPoints) {
         drawColorCheckerPoints();
+    }
+
+    if (d->enableBlackbodyLocus) {
+        drawBlackbodyLocus();
     }
 
     if (d->enableLabels) {
@@ -1346,6 +1508,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     showOverlays.addAction(d->drawImgGamut);
     showOverlays.addAction(d->drawMacAdamEllipses);
     showOverlays.addAction(d->drawColorCheckerPoints);
+    showOverlays.addAction(d->drawBlackbodyLocus);
 
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
@@ -1464,6 +1627,7 @@ void Scatter2dChart::changeProperties()
     d->enableImgGamut = d->drawImgGamut->isChecked();
     d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();
     d->enableColorCheckerPoints = d->drawColorCheckerPoints->isChecked();
+    d->enableBlackbodyLocus = d->drawBlackbodyLocus->isChecked();
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
     d->enableStats = d->drawStats->isChecked();

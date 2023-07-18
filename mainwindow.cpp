@@ -169,6 +169,7 @@ void MainWindow::goPlot()
             showImgGamutChk->isChecked(),
             showMacAdamECHk->isChecked(),
             showColorCheckChk->isChecked(),
+            showBlBodyLocChk->isChecked(),
             particleAlphaSpn->value(),
             particleSizeSpn->value(),
             renderScaleSpn->value()

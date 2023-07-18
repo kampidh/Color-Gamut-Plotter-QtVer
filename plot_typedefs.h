@@ -28,6 +28,7 @@ typedef struct {
     bool showImageGamut;
     bool showMacAdamEllipses;
     bool showColorCheckerPoints;
+    bool showBlBodyLocus;
     double particleOpacity;
     int particleSize;
     double renderScale;
