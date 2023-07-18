@@ -1089,6 +1089,7 @@ void Scatter2dChart::whenScrollTimerEnds()
         return;
     d->inputScatterData = true;
     d->m_ScatterPixmap = QImage(d->m_pixmap.size(), d->m_imageFormat);
+    d->m_ScatterPixmap.setColorSpace(d->m_imageSpace);
     d->m_ScatterPixmap.fill(Qt::transparent);
 
     d->isDownscaled = false;
