@@ -253,7 +253,7 @@
             <item row="2" column="1">
              <widget class="QCheckBox" name="showBlBodyLocChk">
               <property name="text">
-               <string>Blackbody locus</string>
+               <string>BB and Daylight locus</string>
               </property>
              </widget>
             </item>

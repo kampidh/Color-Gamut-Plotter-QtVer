@@ -74,6 +74,7 @@ public:
     QImage m_ScatterTempPixmap;
     QVector<ImageXYZDouble> m_dOutGamut;
     QVector<QVector2D> m_blackbodyLocus;
+    QVector<QVector2D> m_daylightLocus;
     QVector3D m_dWhitePoint;
     int m_particleSize{0};
     int m_particleSizeStored{0};
@@ -212,7 +213,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawBlackbodyLocus = new QAction("Planckian locus");
+    d->drawBlackbodyLocus = new QAction("Blackbody and Daylight locus");
     d->drawBlackbodyLocus->setCheckable(true);
     d->drawBlackbodyLocus->setChecked(d->enableBlackbodyLocus);
     connect(d->drawBlackbodyLocus, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -286,6 +287,22 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
         }
 
         d->m_blackbodyLocus.append({static_cast<float>(x), static_cast<float>(y)});
+    }
+
+    for (int i = 4000; i <= 10000; i += 50) {
+        const double temp = static_cast<float>(i);
+        double x;
+        double y;
+
+        if (i <= 7000) {
+            x = 0.244063 + (0.09911 * (1.0e+3 / temp)) + (2.9678 * (1.0e+6 / std::pow(temp, 2.0))) - (4.6070 * (1.0e+9 / std::pow(temp, 3.0)));
+        } else {
+            x = 0.237040 + (0.24748 * (1.0e+3 / temp)) + (1.9018 * (1.0e+6 / std::pow(temp, 2.0))) - (2.0064 * (1.0e+9 / std::pow(temp, 3.0)));
+        }
+
+        y = (-3.000 * std::pow(x, 2.0)) + (2.870 * x) - 0.275;
+
+        d->m_daylightLocus.append({static_cast<float>(x), static_cast<float>(y)});
     }
 
     connect(&d->m_future, &QFutureWatcher<void>::resultReadyAt, this, &Scatter2dChart::drawFutureAt);
@@ -939,6 +956,12 @@ void Scatter2dChart::drawBlackbodyLocus()
     pn.setCapStyle(Qt::RoundCap);
     pn.setWidthF(1.0);
 
+    QPen pnDash;
+    pnDash.setColor(Qt::white);
+    pnDash.setStyle(Qt::DashLine);
+    pnDash.setCapStyle(Qt::RoundCap);
+    pnDash.setWidthF(1.0);
+
     QPen pnOuter;
     pnOuter.setColor(Qt::black);
     pn.setCapStyle(Qt::RoundCap);
@@ -947,19 +970,6 @@ void Scatter2dChart::drawBlackbodyLocus()
     d->m_painter.setFont(QFont("Courier New", 10.0));
 
     d->m_painter.setBrush(Qt::transparent);
-
-    QPainterPath blackbody(mapPoint(QPointF(d->m_blackbodyLocus.at(0).x(), d->m_blackbodyLocus.at(0).y())));
-    for (int i = 1; i < d->m_blackbodyLocus.size(); i++) {
-        const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(i).x(), d->m_blackbodyLocus.at(i).y()));
-        blackbody.lineTo(blbPoint);
-    }
-
-    d->m_painter.setPen(pnOuter);
-    d->m_painter.drawPath(blackbody);
-    d->m_painter.setPen(pn);
-    d->m_painter.drawPath(blackbody);
-
-    d->m_painter.setBrush(Qt::black);
 
     QLineF markerLong(0, -25, 0, 25);
     QLineF markerShort(0, -10, 0, 10);
@@ -976,6 +986,30 @@ void Scatter2dChart::drawBlackbodyLocus()
         }
         return 50;
     }();
+
+    QPainterPath daylight(mapPoint(QPointF(d->m_daylightLocus.at(0).x(), d->m_daylightLocus.at(0).y())));
+    for (int i = 1; i < d->m_daylightLocus.size(); i++) {
+        const QPointF dyPoint = mapPoint(QPointF(d->m_daylightLocus.at(i).x(), d->m_daylightLocus.at(i).y()));
+        daylight.lineTo(dyPoint);
+    }
+
+    d->m_painter.setPen(pnOuter);
+    d->m_painter.drawPath(daylight);
+    d->m_painter.setPen(pnDash);
+    d->m_painter.drawPath(daylight);
+
+    QPainterPath blackbody(mapPoint(QPointF(d->m_blackbodyLocus.at(0).x(), d->m_blackbodyLocus.at(0).y())));
+    for (int i = 1; i < d->m_blackbodyLocus.size(); i++) {
+        const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(i).x(), d->m_blackbodyLocus.at(i).y()));
+        blackbody.lineTo(blbPoint);
+    }
+
+    d->m_painter.setPen(pnOuter);
+    d->m_painter.drawPath(blackbody);
+    d->m_painter.setPen(pn);
+    d->m_painter.drawPath(blackbody);
+
+    d->m_painter.setBrush(Qt::black);
 
     const QVector<int> majorMarks{2000, 3000, 4000, 5000, 6500, 10000, 15000};
 
@@ -1034,6 +1068,59 @@ void Scatter2dChart::drawBlackbodyLocus()
                 d->m_painter.drawLine(markerShorter);
                 d->m_painter.setPen(pn);
                 d->m_painter.drawLine(markerShorter);
+            }
+        }
+    }
+    d->m_painter.resetTransform();
+
+    for (int i = 4000; i <= 10000; i += 50) {
+        const int ix = (i - 4000) / 50;
+        const float theta = std::sqrt(std::fabs(2250.0 - i)) * ((i > 2250) ? -0.5 : 0.5);
+        if (i % 1000 == 0) {
+            d->m_painter.resetTransform();
+
+            const QPointF blbPoint = mapPoint(QPointF(d->m_daylightLocus.at(ix).x(), d->m_daylightLocus.at(ix).y()));
+            d->m_painter.translate(blbPoint);
+            d->m_painter.rotate(theta);
+            d->m_painter.setPen(pnOuter);
+            d->m_painter.drawLine(markerShort);
+            d->m_painter.setPen(pn);
+            d->m_painter.drawLine(markerShort);
+
+            if (i == 5000 && ratio >= 3.0) {
+                d->m_painter.rotate(theta * -1.0);
+
+                QRect boundRect;
+                const QString locLabel = QString("D%1").arg(QString::number(i/100));
+                d->m_painter.setPen(Qt::white);
+                d->m_painter.drawText(QRect(-10, 15, 100, 100), 0, locLabel, &boundRect);
+                d->m_painter.setPen(Qt::NoPen);
+                d->m_painter.drawRect(boundRect);
+                d->m_painter.setPen(Qt::white);
+                d->m_painter.drawText(QRect(-10, 15, 100, 100), 0, locLabel);
+            }
+        } else if (i % 500 == 0 && ratio >= 3.0) {
+            d->m_painter.resetTransform();
+
+            const QPointF blbPoint = mapPoint(QPointF(d->m_daylightLocus.at(ix).x(), d->m_daylightLocus.at(ix).y()));
+            d->m_painter.translate(blbPoint);
+            d->m_painter.rotate(theta);
+            d->m_painter.setPen(pnOuter);
+            d->m_painter.drawLine(markerShorter);
+            d->m_painter.setPen(pn);
+            d->m_painter.drawLine(markerShorter);
+
+            if (i == 6500) {
+                d->m_painter.rotate(theta * -1.0);
+
+                QRect boundRect;
+                const QString locLabel = QString("D%1").arg(QString::number(i/100));
+                d->m_painter.setPen(Qt::white);
+                d->m_painter.drawText(QRect(-10, 10, 100, 100), 0, locLabel, &boundRect);
+                d->m_painter.setPen(Qt::NoPen);
+                d->m_painter.drawRect(boundRect);
+                d->m_painter.setPen(Qt::white);
+                d->m_painter.drawText(QRect(-10, 10, 100, 100), 0, locLabel);
             }
         }
     }
