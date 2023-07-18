@@ -79,6 +79,7 @@ public:
     int m_drawnParticles{0};
     int m_lastDrawnParticles{0};
     int m_neededParticles{0};
+    int m_lastNeededParticles{0};
     int adaptiveIterVal{0};
     int m_numberOfSlices{0};
     int m_slicePos{0};
@@ -398,39 +399,6 @@ void Scatter2dChart::drawDataPoints()
 {
     // TODO: kinda spaghetti here...
 
-    // prepare window dimension
-    const RenderBounds rb = getRenderBounds();
-    const int pixmapH = d->m_pixmap.height();
-    const int pixmapW = d->m_pixmap.width();
-
-    d->m_drawnParticles = 0;
-
-
-    // calculate an estimate how much points is needed for onscreen rendering
-    if (d->isDownscaled || d->inputScatterData || d->renderSlices) {
-        d->m_neededParticles = 0;
-        for (int i = 0; i < d->m_cPoints->size(); i += d->adaptiveIterVal) {
-            if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
-                && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
-                d->m_neededParticles++;
-            }
-        }
-        d->m_neededParticles = d->m_neededParticles * d->adaptiveIterVal;
-    } else {
-        d->m_neededParticles = d->m_cPoints->size();
-    }
-
-    const int pixmapPixSize = pixmapH * pixmapW;
-
-    if (pixmapPixSize > maxPixelsBeforeBucket && !d->isDownscaled) {
-        d->useBucketRender = true;
-    } else {
-        d->useBucketRender = false;
-    }
-
-    const int bucketSize = (d->isDownscaled ? bucketDownscaledSize : bucketDefaultSize);
-    const int bucketPadding = d->m_particleSize;
-
     // internal function for painting the chunks concurrently
     std::function<QPair<QImage, QRect>(const QPair<QVector<ColorPoint *>, QRect> &)> const paintInChunk =
         [&](const QPair<QVector<ColorPoint *>, QRect> &chunk) -> QPair<QImage, QRect> {
@@ -505,25 +473,85 @@ void Scatter2dChart::drawDataPoints()
         }
 
         return {tempMap, chunk.second};
-    };
+    }; // paintInChunk
+
+    // prepare window dimension
+    const RenderBounds rb = getRenderBounds();
+    const int pixmapH = d->m_pixmap.height();
+    const int pixmapW = d->m_pixmap.width();
+
+    const int pixmapPixSize = pixmapH * pixmapW;
+
+    if (pixmapPixSize > maxPixelsBeforeBucket && !d->isDownscaled) {
+        d->useBucketRender = true;
+    } else {
+        d->useBucketRender = false;
+    }
+
+    const int bucketSize = (d->isDownscaled ? bucketDownscaledSize : bucketDefaultSize);
+    const int bucketPadding = d->m_particleSize;
 
     QVector<QPair<QVector<ColorPoint*>, QRect>> fragmentedColPoints;
     QVector<ColorPoint*> temporaryColPoints;
 
-    // progressive param
-    const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
-    const int chunkSize = d->m_neededParticles / thrCount;
+    const bool needUpdate = (d->isDownscaled || d->inputScatterData || d->renderSlices);
 
-    // bucket param
-    const int bucketWNum = std::ceil(pixmapW / (bucketSize * 1.0));
-    const int bucketHNum = std::ceil(pixmapH / (bucketSize * 1.0));
-    const int bucketTotalNum = bucketWNum * bucketHNum;
-
-    if (d->useBucketRender) {
-        fragmentedColPoints.resize(bucketTotalNum);
+    d->m_drawnParticles = 0;
+    // calculate an estimate how much points is needed for onscreen rendering
+    if (needUpdate) {
+        d->m_neededParticles = 0;
+        for (int i = 0; i < d->m_cPoints->size(); i += d->adaptiveIterVal) {
+            if ((d->m_cPoints->at(i).first.X > rb.originX && d->m_cPoints->at(i).first.X < rb.maxX)
+                && (d->m_cPoints->at(i).first.Y > rb.originY && d->m_cPoints->at(i).first.Y < rb.maxY)) {
+                d->m_neededParticles++;
+            }
+        }
+        d->m_neededParticles = d->m_neededParticles * d->adaptiveIterVal;
+        d->m_lastNeededParticles = d->m_neededParticles;
+    } else {
+        d->m_neededParticles = d->m_lastNeededParticles;
     }
 
-    if (d->isDownscaled || d->inputScatterData || d->renderSlices) {
+    // set iteration size (for downscaling)
+    if (d->isDownscaled) {
+        if (d->enableStaticDownscale) {
+            // static downscaling
+            if (d->m_cPoints->size() > 2000000) {
+                d->m_dArrayIterSize = 100;
+            } else if (d->m_cPoints->size() > 500000) {
+                d->m_dArrayIterSize = 50;
+            } else {
+                d->m_dArrayIterSize = 10;
+            }
+        } else {
+            // dynamic downscaling
+            const int iter = d->m_neededParticles / adaptiveIterMaxRenderedPoints;
+            if (iter > 5) {
+                d->m_dArrayIterSize = iter;
+            } else {
+                d->m_dArrayIterSize = 5;
+            }
+        }
+        d->m_particleSize = 4 * d->m_pixmapSize;
+    } else {
+        d->m_dArrayIterSize = 1;
+    }
+
+    // scoop actual points into render queue
+    if (needUpdate) {
+        // progressive param
+        const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
+        const int chunkSize = d->m_neededParticles / thrCount;
+
+        // bucket param
+        const int bucketWNum = std::ceil(pixmapW / (bucketSize * 1.0));
+        const int bucketHNum = std::ceil(pixmapH / (bucketSize * 1.0));
+        const int bucketTotalNum = bucketWNum * bucketHNum;
+
+        if (d->useBucketRender) {
+            fragmentedColPoints.resize(bucketTotalNum);
+        }
+
         // divide to chunks
         for (int i = 0; i < d->m_cPoints->size(); i += d->m_dArrayIterSize) {
             if (d->renderSlices) {
@@ -553,7 +581,7 @@ void Scatter2dChart::drawDataPoints()
                             && (map.y() > orY - bucketPadding && map.y() < maxY + (bucketPadding * 2))
                             && (map.x() > 0 && map.x() < pixmapW) && (map.y() > 0 && map.y() < pixmapH)) {
                             isDataWritten = true;
-                            const QPoint origin(orX, orY);
+//                            const QPoint origin(orX, orY);
                             const QRect bucket(orX, orY, bucketSize, bucketSize);
                             fragmentedColPoints[bucketAbsPos].second = bucket;
                             fragmentedColPoints[bucketAbsPos].first.append(
@@ -1080,28 +1108,6 @@ void Scatter2dChart::drawDownscaled(int delayms)
     cancelRender();
     d->finishedRender = false;
     d->isCancelFired = false;
-
-    // dynamic downscaling
-    if (!d->enableStaticDownscale) {
-        const int iterSize = d->m_neededParticles / adaptiveIterMaxRenderedPoints; // 50k maximum particles
-        if (iterSize > 1) {
-            d->m_dArrayIterSize = iterSize;
-            d->m_particleSize = 4 * d->m_pixmapSize;
-        } else {
-            d->m_dArrayIterSize = 1;
-            d->m_particleSize = 4 * d->m_pixmapSize;
-        }
-    } else {
-        // static downscaling
-        if (d->m_cPoints->size() > 2000000) {
-            d->m_dArrayIterSize = 100;
-        } else if (d->m_cPoints->size() > 500000) {
-            d->m_dArrayIterSize = 50;
-        } else {
-            d->m_dArrayIterSize = 10;
-        }
-        d->m_particleSize = 4 * d->m_pixmapSize;
-    }
 }
 
 void Scatter2dChart::saveSlicesAsImage()
