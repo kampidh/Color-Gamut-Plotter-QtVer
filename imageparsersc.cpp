@@ -368,8 +368,13 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
         return;
     }
 
-    for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
-        d->m_outCp->append(*it);
+    // I totally don't have idea why this one freaks out on Qt 5.15 Release build on WSL2...
+//    for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
+//        d->m_outCp->append(*it);
+//    }
+
+    for (int i = 0; i < futureTmp.future().resultCount(); i++) {
+        d->m_outCp->append(futureTmp.resultAt(i));
     }
 
     const int sampleNum = 100;
@@ -498,8 +503,13 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
         return;
     }
 
-    for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
-        d->m_outCp->append(*it);
+    // I totally don't have idea why this one freaks out on Qt 5.15 Release build on WSL2...
+//    for (auto it = futureTmp.future().constBegin(); it != futureTmp.future().constEnd(); it++) {
+//        d->m_outCp->append(*it);
+//    }
+
+    for (int i = 0; i < futureTmp.future().resultCount(); i++) {
+        d->m_outCp->append(futureTmp.resultAt(i));
     }
 
     const int sampleNum = 100;
