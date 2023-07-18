@@ -669,26 +669,55 @@ void Scatter2dChart::drawSpectralLine()
     d->m_painter.setRenderHint(QPainter::Antialiasing);
     d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
     QPen pn;
+
     pn.setColor(QColor(64, 64, 64));
     pn.setWidth(1);
     d->m_painter.setPen(pn);
+    d->m_painter.setBrush(Qt::transparent);
 
-    QPointF mapB;
-    QPointF mapC;
+    QPainterPath spectral(mapPoint(QPointF(spectral_chromaticity[0][0], spectral_chromaticity[0][1])));
+    for (int x = 385; x < 700; x += 5) {
+        int i = (x - 380) / 5;
+        const QPointF specPoint = mapPoint(QPointF(spectral_chromaticity[i][0], spectral_chromaticity[i][1]));
+        spectral.lineTo(specPoint);
+    }
+    spectral.closeSubpath();
 
-    for (int x = 380; x <= 700; x += 5) {
-        int ix = (x - 380) / 5;
-        const QPointF map = mapPoint(QPointF(spectral_chromaticity[ix][0], spectral_chromaticity[ix][1]));
+    d->m_painter.drawPath(spectral);
 
-        if (x > 380) {
-            d->m_painter.drawLine(mapB, map);
-        } else {
-            mapC = map;
+    d->m_painter.setRenderHint(QPainter::Antialiasing, false);
+
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    d->m_painter.setBrush(Qt::black);
+
+    const int labelIter = [&]() {
+        if (d->m_zoomRatio < 1.5) {
+            return 4;
+        } else if (d->m_zoomRatio < 3.0) {
+            return 2;
         }
-        mapB = map;
+        return 1;
+    }();
+
+    for (int x = 385; x < 700; x += 5) {
+        int i = (x - 380) / 5;
+        if (i % labelIter == 0) {
+            const QPointF specPoint = mapPoint(QPointF(spectral_chromaticity[i][0], spectral_chromaticity[i][1]));
+
+            d->m_painter.translate(specPoint);
+
+            QRect bound;
+            d->m_painter.setPen(Qt::gray);
+            d->m_painter.drawText(QRect(-25,-25,50,50), Qt::AlignCenter, QString::number(x), &bound);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(bound);
+            d->m_painter.setPen(Qt::gray);
+            d->m_painter.drawText(QRect(-25,-25,50,50), Qt::AlignCenter, QString::number(x));
+
+            d->m_painter.resetTransform();
+        }
     }
 
-    d->m_painter.drawLine(mapB, mapC);
     d->m_painter.restore();
 }
 
