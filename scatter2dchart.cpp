@@ -1916,9 +1916,9 @@ void Scatter2dChart::changeAlpha()
                                                     "Set alpha",
                                                     "Per-particle alpha",
                                                     currentAlpha,
-                                                    0.001,
+                                                    0.0005,
                                                     1.0,
-                                                    3,
+                                                    4,
                                                     &isAlphaOkay,
                                                     Qt::WindowFlags(),
                                                     0.1);
@@ -1940,7 +1940,7 @@ void Scatter2dChart::changeParticleSize()
                                                      "Per-particle size",
                                                      currentParticleSize,
                                                      1,
-                                                     10,
+                                                     20,
                                                      1,
                                                      &isParSizeOkay);
     if (isParSizeOkay) {
