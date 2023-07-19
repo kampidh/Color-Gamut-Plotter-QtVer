@@ -1322,6 +1322,8 @@ void Scatter2dChart::drawGrids()
     const float fromPos = -0.5;
     const float toPos = 1;
 
+    const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+
     for (int i = -5; i < 10; i++) {
         if (i == 0) {
             d->m_painter.setPen(mainAxis);
@@ -1340,7 +1342,7 @@ void Scatter2dChart::drawGrids()
             d->m_painter.drawText(mapPoint(QPointF((i / 10.0) - 0.012, labelBias)), lb);
             d->m_painter.drawText(mapPoint(QPointF(labelBias - 0.012, i / 10.0 - 0.002)), lb);
         }
-        if (d->m_zoomRatio > 2.0) {
+        if (ratio > 2.0) {
             for (int j = 1; j < 10; j++) {
                 d->m_painter.setPen(subGrid);
                 d->m_painter.drawLine(mapPoint(QPointF((i / 10.0) - (j / 100.0), fromPos)),
@@ -1358,11 +1360,13 @@ void Scatter2dChart::drawLabels()
 {
     d->m_painter.save();
 //    d->m_painter.setRenderHint(QPainter::Antialiasing);
-    if (d->m_bgColor != Qt::black) {
-        d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
+    d->m_painter.setPen(Qt::lightGray);
+    d->m_painter.setBrush(QColor(0, 0, 0, 160));
+    if (d->isDownscaled) {
+        d->m_labelFont.setPixelSize(d->m_pixmapSize * 14);
+    } else {
+        d->m_labelFont.setPixelSize(14);
     }
-    d->m_painter.setPen(QPen(Qt::lightGray));
-    d->m_labelFont.setPixelSize(d->m_pixmapSize * 16);
     d->m_painter.setFont(d->m_labelFont);
     const QPointF centerXY =
         mapScreenPoint({static_cast<double>(width() / 2.0 - 0.5), static_cast<double>(height() / 2 - 0.5)});
@@ -1380,13 +1384,17 @@ void Scatter2dChart::drawLabels()
         fullLegends += slicesPos;
     }
 
-    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nCenter: x:%1 | y:%2\nZoom: %3\%")
+    const RenderBounds rb = getRenderBounds();
+    const double maxYrange = rb.maxY - rb.originY;
+
+    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nCenter: x:%1 | y:%2\nZoom: %3\% (y range: %7)")
                                 .arg(QString::number(centerXY.x(), 'f', 6),
                                      QString::number(centerXY.y(), 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),
                                      QString::number(d->m_cPoints->size()),
                                      QString::number(d->m_lastDrawnParticles),
-                                     QString(!d->isDownscaled ? !d->finishedRender ? "rendering..." : "rendered" : "draft"));
+                                     QString(!d->isDownscaled ? !d->finishedRender ? "rendering..." : "rendered" : "draft"),
+                                     QString::number(maxYrange, 'f', 6));
 
     fullLegends += legends;
 
@@ -1404,7 +1412,15 @@ void Scatter2dChart::drawLabels()
         fullLegends += mpps;
     }
 
-    d->m_painter.drawText(d->m_pixmap.rect(), Qt::AlignBottom | Qt::AlignLeft, fullLegends);
+    QRect boundRect;
+    const QMargins lblMargin(8, 8, 8, 8);
+    const QMargins lblBorder(5, 5, 5, 5);
+    d->m_painter.drawText(d->m_pixmap.rect() - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fullLegends, &boundRect);
+    d->m_painter.setPen(Qt::NoPen);
+    boundRect += lblBorder;
+    d->m_painter.drawRect(boundRect);
+    d->m_painter.setPen(Qt::lightGray);
+    d->m_painter.drawText(d->m_pixmap.rect() - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fullLegends);
 
     d->m_painter.restore();
 }
