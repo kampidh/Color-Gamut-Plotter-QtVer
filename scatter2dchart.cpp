@@ -110,7 +110,9 @@ public:
     QMutex m_locker;
 
     QVector<ColorPoint> *m_cPoints;
+    QVector<cmsCIExyY> m_adaptedColorChecker76;
     QVector<cmsCIExyY> m_adaptedColorChecker;
+    QVector<cmsCIExyY> m_adaptedColorCheckerNew;
     int m_idealThrCount = 0;
 
     QAction *setZoom;
@@ -123,6 +125,8 @@ public:
     QAction *drawImgGamut;
     QAction *drawMacAdamEllipses;
     QAction *drawColorCheckerPoints;
+    QAction *drawColorCheckerPointsOld;
+    QAction *drawColorCheckerPoints76;
     QAction *drawBlackbodyLocus;
     QAction *setStaticDownscale;
     QAction *setAlpha;
@@ -142,6 +146,8 @@ public:
     bool enableImgGamut{true};
     bool enableMacAdamEllipses{false};
     bool enableColorCheckerPoints{false};
+    bool enableColorCheckerPointsOld{false};
+    bool enableColorCheckerPoints76{false};
     bool enableBlackbodyLocus{false};
     bool enableStaticDownscale{false};
     bool enableAA{false};
@@ -208,10 +214,20 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
     connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawColorCheckerPoints = new QAction("ColorChecker points");
+    d->drawColorCheckerPoints = new QAction("ColorChecker (After Nov 2014)");
     d->drawColorCheckerPoints->setCheckable(true);
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
     connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawColorCheckerPointsOld = new QAction("ColorChecker (Before Nov 2014)");
+    d->drawColorCheckerPointsOld->setCheckable(true);
+    d->drawColorCheckerPointsOld->setChecked(d->enableColorCheckerPointsOld);
+    connect(d->drawColorCheckerPointsOld, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawColorCheckerPoints76 = new QAction("ColorChecker (Classic 1976)");
+    d->drawColorCheckerPoints76->setCheckable(true);
+    d->drawColorCheckerPoints76->setChecked(d->enableColorCheckerPoints76);
+    connect(d->drawColorCheckerPoints76, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     d->drawBlackbodyLocus = new QAction("Blackbody and Daylight locus");
     d->drawBlackbodyLocus->setCheckable(true);
@@ -392,27 +408,53 @@ void Scatter2dChart::addGamutOutline(QVector<ImageXYZDouble> &dOutGamut, QVector
     d->m_dWhitePoint = dWhitePoint;
 
     const cmsCIExyY prfWPxyY{d->m_dWhitePoint.x(), d->m_dWhitePoint.y(), d->m_dWhitePoint.z()};
-    const cmsCIExyY ccWPxyY{Macbeth_chart[18][0], Macbeth_chart[18][1], Macbeth_chart[18][2]};
+    const cmsCIExyY ccWPxyY76{Macbeth_chart_1976[18][0], Macbeth_chart_1976[18][1], Macbeth_chart_1976[18][2]};
 
     d->m_adaptedColorChecker.clear();
 
     cmsCIEXYZ prfWPXYZ;
-    cmsCIEXYZ ccWPXYZ;
+    cmsCIEXYZ ccWPXYZ76;
 
     cmsxyY2XYZ(&prfWPXYZ, &prfWPxyY);
-    cmsxyY2XYZ(&ccWPXYZ, &ccWPxyY);
+    cmsxyY2XYZ(&ccWPXYZ76, &ccWPxyY76);
 
+    // calculate ColorChecker points to adapted illuminant
     for (int i = 0; i < 24; i++) {
-        const cmsCIExyY srcxyY{Macbeth_chart[i][0], Macbeth_chart[i][1], Macbeth_chart[i][2]};
+        // 1976
+        const cmsCIExyY srcxyY76{Macbeth_chart_1976[i][0], Macbeth_chart_1976[i][1], Macbeth_chart_1976[i][2]};
+        cmsCIEXYZ srcXYZ76;
+        cmsCIEXYZ destXYZ76;
+        cmsCIExyY destxyY76;
+
+        cmsxyY2XYZ(&srcXYZ76, &srcxyY76);
+        cmsAdaptToIlluminant(&destXYZ76, &ccWPXYZ76, &prfWPXYZ, &srcXYZ76);
+
+        cmsXYZ2xyY(&destxyY76, &destXYZ76);
+        d->m_adaptedColorChecker76.append({destxyY76.x, destxyY76.y, destxyY76.Y});
+
+        // Pre-Nov2014
+        const cmsCIExyY srcxyY{Macbeth_chart_2005[i][0], Macbeth_chart_2005[i][1], Macbeth_chart_2005[i][2]};
         cmsCIEXYZ srcXYZ;
         cmsCIEXYZ destXYZ;
         cmsCIExyY destxyY;
 
         cmsxyY2XYZ(&srcXYZ, &srcxyY);
-        cmsAdaptToIlluminant(&destXYZ, &ccWPXYZ, &prfWPXYZ, &srcXYZ);
+        cmsAdaptToIlluminant(&destXYZ, cmsD50_XYZ(), &prfWPXYZ, &srcXYZ);
 
         cmsXYZ2xyY(&destxyY, &destXYZ);
         d->m_adaptedColorChecker.append({destxyY.x, destxyY.y, destxyY.Y});
+
+        // Post-Nov2014
+        const cmsCIELab srcNewLab{ColorChecker_After_Nov2014_Lab[i][0], ColorChecker_After_Nov2014_Lab[i][1], ColorChecker_After_Nov2014_Lab[i][2]};
+        cmsCIEXYZ srcXYZNew;
+        cmsCIEXYZ dstXYZNew;
+        cmsCIExyY dstxyYNew;
+
+        cmsLab2XYZ(cmsD50_XYZ(), &srcXYZNew, &srcNewLab);
+        cmsAdaptToIlluminant(&dstXYZNew, cmsD50_XYZ(), &prfWPXYZ, &srcXYZNew);
+        cmsXYZ2xyY(&dstxyYNew, &dstXYZNew);
+
+        d->m_adaptedColorCheckerNew.append({dstxyYNew.x, dstxyYNew.y, dstxyYNew.Y});
     }
 }
 
@@ -894,6 +936,66 @@ void Scatter2dChart::drawColorCheckerPoints()
     d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
     QPen pn;
+    pn.setColor(Qt::yellow);
+    pn.setCapStyle(Qt::RoundCap);
+    pn.setWidthF(1.0);
+
+    QPen pnOuter;
+    pnOuter.setColor(Qt::black);
+    pn.setCapStyle(Qt::RoundCap);
+    pnOuter.setWidthF(2.0);
+
+    d->m_painter.setBrush(QColor(0, 0, 0, 200));
+    d->m_painter.setPen(pn);
+
+    QVector<QLineF> cross = {{-10.0, 0.0, 10.0, 0.0}, {0.0, -10.0, 0.0, 10.0}};
+
+    d->m_painter.setFont(QFont("Courier New", 12.0, QFont::Bold));
+
+    const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+
+    for (int i = 0; i < 24; i++) {
+        const QPointF centerCol = mapPoint({d->m_adaptedColorChecker.at(i).x, d->m_adaptedColorChecker.at(i).y});
+
+        d->m_painter.resetTransform();
+        d->m_painter.translate(centerCol);
+
+        d->m_painter.setPen(pnOuter);
+        d->m_painter.drawLines(cross);
+
+        d->m_painter.setPen(pn);
+        d->m_painter.drawLines(cross);
+
+        if (i < 18 || ratio >= 10.0) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::yellow);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1), &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::yellow);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1));
+        } else if (i == 18 && ratio < 10.0) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::yellow);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24", &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::yellow);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24");
+        }
+    }
+    d->m_painter.resetTransform();
+
+    d->m_painter.restore();
+}
+
+void Scatter2dChart::drawColorCheckerPointsNew()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    QPen pn;
     pn.setColor(Qt::white);
     pn.setCapStyle(Qt::RoundCap);
     pn.setWidthF(1.0);
@@ -910,8 +1012,68 @@ void Scatter2dChart::drawColorCheckerPoints()
 
     d->m_painter.setFont(QFont("Courier New", 12.0, QFont::Bold));
 
+    const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+
     for (int i = 0; i < 24; i++) {
-        const QPointF centerCol = mapPoint({d->m_adaptedColorChecker.at(i).x, d->m_adaptedColorChecker.at(i).y});
+        const QPointF centerCol = mapPoint({d->m_adaptedColorCheckerNew.at(i).x, d->m_adaptedColorCheckerNew.at(i).y});
+
+        d->m_painter.resetTransform();
+        d->m_painter.translate(centerCol);
+
+        d->m_painter.setPen(pnOuter);
+        d->m_painter.drawLines(cross);
+
+        d->m_painter.setPen(pn);
+        d->m_painter.drawLines(cross);
+
+        if (i < 18 || ratio >= 10.0) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1), &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1));
+        } else if (i == 18 && ratio < 10.0) {
+            QRect boundRect;
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24", &boundRect);
+            d->m_painter.setPen(Qt::NoPen);
+            d->m_painter.drawRect(boundRect);
+            d->m_painter.setPen(Qt::white);
+            d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24");
+        }
+    }
+    d->m_painter.resetTransform();
+
+    d->m_painter.restore();
+}
+
+void Scatter2dChart::drawColorCheckerPoints76()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+    d->m_painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    QPen pn;
+    pn.setColor(Qt::cyan);
+    pn.setCapStyle(Qt::RoundCap);
+    pn.setWidthF(1.0);
+
+    QPen pnOuter;
+    pnOuter.setColor(Qt::black);
+    pn.setCapStyle(Qt::RoundCap);
+    pnOuter.setWidthF(2.0);
+
+    d->m_painter.setBrush(QColor(0, 0, 0, 200));
+    d->m_painter.setPen(pn);
+
+    QVector<QLineF> cross = {{-10.0, 0.0, 10.0, 0.0}, {0.0, -10.0, 0.0, 10.0}};
+
+    d->m_painter.setFont(QFont("Courier New", 12.0, QFont::Bold));
+
+    for (int i = 0; i < 24; i++) {
+        const QPointF centerCol = mapPoint({d->m_adaptedColorChecker76.at(i).x, d->m_adaptedColorChecker76.at(i).y});
 
         d->m_painter.resetTransform();
         d->m_painter.translate(centerCol);
@@ -924,19 +1086,19 @@ void Scatter2dChart::drawColorCheckerPoints()
 
         if (i < 18) {
             QRect boundRect;
-            d->m_painter.setPen(Qt::white);
+            d->m_painter.setPen(Qt::cyan);
             d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1), &boundRect);
             d->m_painter.setPen(Qt::NoPen);
             d->m_painter.drawRect(boundRect);
-            d->m_painter.setPen(Qt::white);
+            d->m_painter.setPen(Qt::cyan);
             d->m_painter.drawText(QRect(5, 5, 100, 100), 0, QString::number(i+1));
         } else if (i == 18) {
             QRect boundRect;
-            d->m_painter.setPen(Qt::white);
+            d->m_painter.setPen(Qt::cyan);
             d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24", &boundRect);
             d->m_painter.setPen(Qt::NoPen);
             d->m_painter.drawRect(boundRect);
-            d->m_painter.setPen(Qt::white);
+            d->m_painter.setPen(Qt::cyan);
             d->m_painter.drawText(QRect(5, 5, 100, 100), 0, "19-24");
         }
     }
@@ -1290,8 +1452,16 @@ void Scatter2dChart::doUpdate()
         drawMacAdamEllipses();
     }
 
-    if (d->enableColorCheckerPoints) {
+    if (d->enableColorCheckerPoints76) {
+        drawColorCheckerPoints76();
+    }
+
+    if (d->enableColorCheckerPointsOld) {
         drawColorCheckerPoints();
+    }
+
+    if (d->enableColorCheckerPoints) {
+        drawColorCheckerPointsNew();
     }
 
     if (d->enableBlackbodyLocus) {
@@ -1594,8 +1764,11 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     showOverlays.addAction(d->drawSrgbGamut);
     showOverlays.addAction(d->drawImgGamut);
     showOverlays.addAction(d->drawMacAdamEllipses);
-    showOverlays.addAction(d->drawColorCheckerPoints);
     showOverlays.addAction(d->drawBlackbodyLocus);
+    showOverlays.addSeparator();
+    showOverlays.addAction(d->drawColorCheckerPoints);
+    showOverlays.addAction(d->drawColorCheckerPointsOld);
+    showOverlays.addAction(d->drawColorCheckerPoints76);
 
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
@@ -1714,6 +1887,8 @@ void Scatter2dChart::changeProperties()
     d->enableImgGamut = d->drawImgGamut->isChecked();
     d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();
     d->enableColorCheckerPoints = d->drawColorCheckerPoints->isChecked();
+    d->enableColorCheckerPointsOld = d->drawColorCheckerPointsOld->isChecked();
+    d->enableColorCheckerPoints76 = d->drawColorCheckerPoints76->isChecked();
     d->enableBlackbodyLocus = d->drawBlackbodyLocus->isChecked();
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();

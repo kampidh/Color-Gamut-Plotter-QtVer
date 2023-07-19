@@ -223,10 +223,10 @@
             <item row="1" column="1">
              <widget class="QCheckBox" name="showColorCheckChk">
               <property name="toolTip">
-               <string>Draw ColorChecker points that's adapted to image's white point.</string>
+               <string>Draw ColorChecker (after Nov 2014) points that's adapted to image's white point.</string>
               </property>
               <property name="text">
-               <string>ColorChecker points</string>
+               <string>ColorChecker (2014+)</string>
               </property>
              </widget>
             </item>

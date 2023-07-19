@@ -76,6 +76,8 @@ private:
     void drawGamutTriangleWP();
     void drawMacAdamEllipses();
     void drawColorCheckerPoints();
+    void drawColorCheckerPointsNew();
+    void drawColorCheckerPoints76();
     void drawBlackbodyLocus();
     void drawGrids();
     void drawLabels();
