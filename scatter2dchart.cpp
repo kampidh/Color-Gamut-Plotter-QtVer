@@ -614,7 +614,7 @@ void Scatter2dChart::drawDataPoints()
             if (d->renderSlices) {
                 const double sliceRange = d->m_maxY - d->m_minY;
                 const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
-                const double currentPos = ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange) - d->m_minY;
+                const double currentPos =  d->m_minY + ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange);
                 const double minY = currentPos - sliceHalfSize;
                 const double maxY = currentPos + sliceHalfSize;
                 if (d->m_cPoints->at(i).first.Z < minY || d->m_cPoints->at(i).first.Z > maxY) {
@@ -1210,7 +1210,7 @@ void Scatter2dChart::drawLabels()
     if (d->renderSlices) {
         const double sliceRange = d->m_maxY - d->m_minY;
         const double sliceHalfSize = sliceRange / d->m_numberOfSlices / 2.0;
-        const double currentPos = ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange) - d->m_minY;
+        const double currentPos =  d->m_minY + ((d->m_slicePos * 1.0 / d->m_numberOfSlices * 1.0) * sliceRange);
 
         const QString slicesPos =
             QString("Y: %1(±%2)\n").arg(QString::number(currentPos), QString::number(sliceHalfSize));
