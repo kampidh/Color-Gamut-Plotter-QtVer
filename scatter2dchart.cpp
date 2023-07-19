@@ -1406,7 +1406,7 @@ void Scatter2dChart::saveSlicesAsImage()
                                                "Total slices",
                                                10,
                                                5,
-                                               100,
+                                               500,
                                                1,
                                                &isNumSlicesOkay);
     if (!isNumSlicesOkay) {
