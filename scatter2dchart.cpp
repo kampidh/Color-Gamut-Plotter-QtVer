@@ -121,6 +121,8 @@ public:
     QAction *pasteOrigAndZoom;
     QAction *drawLabels;
     QAction *drawGrids;
+    QAction *drawSpectralLine;
+    QAction *drawRulers;
     QAction *drawSrgbGamut;
     QAction *drawImgGamut;
     QAction *drawMacAdamEllipses;
@@ -142,6 +144,8 @@ public:
 
     bool enableLabels{true};
     bool enableGrids{true};
+    bool enableSpectralLine{true};
+    bool enableRulers{true};
     bool enableSrgbGamut{true};
     bool enableImgGamut{true};
     bool enableMacAdamEllipses{false};
@@ -193,10 +197,20 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawLabels->setChecked(d->enableLabels);
     connect(d->drawLabels, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawGrids = new QAction("Grids and spectral line");
+    d->drawGrids = new QAction("Grids");
     d->drawGrids->setCheckable(true);
     d->drawGrids->setChecked(d->enableGrids);
     connect(d->drawGrids, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawSpectralLine = new QAction("Spectral locus");
+    d->drawSpectralLine->setCheckable(true);
+    d->drawSpectralLine->setChecked(d->enableSpectralLine);
+    connect(d->drawSpectralLine, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->drawRulers = new QAction("Rulers");
+    d->drawRulers->setCheckable(true);
+    d->drawRulers->setChecked(d->enableRulers);
+    connect(d->drawRulers, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     d->drawSrgbGamut = new QAction("sRGB gamut");
     d->drawSrgbGamut->setCheckable(true);
@@ -339,6 +353,8 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
 
     d->enableLabels = plot.showStatistics;
     d->enableGrids = plot.showGridsAndSpectrum;
+    d->enableSpectralLine = plot.showGridsAndSpectrum;
+    d->enableRulers = plot.showGridsAndSpectrum;
     d->enableSrgbGamut = plot.showsRGBGamut;
     d->enableImgGamut = plot.showImageGamut;
     d->enableMacAdamEllipses = plot.showMacAdamEllipses;
@@ -352,6 +368,8 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
 
     d->drawLabels->setChecked(d->enableLabels);
     d->drawGrids->setChecked(d->enableGrids);
+    d->drawSpectralLine->setChecked(d->enableSpectralLine);
+    d->drawRulers->setChecked(d->enableRulers);
     d->drawSrgbGamut->setChecked(d->enableSrgbGamut);
     d->drawImgGamut->setChecked(d->enableImgGamut);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
@@ -1307,15 +1325,17 @@ void Scatter2dChart::drawGrids()
 
     QPen mainGrid;
     mainGrid.setWidth(1);
-    mainGrid.setColor(QColor(128, 128, 128, 96));
+    mainGrid.setColor(QColor(128, 128, 128, 128));
     mainGrid.setStyle(Qt::DotLine);
 
     QPen subGrid;
     subGrid.setWidth(1);
-    subGrid.setColor(QColor(128, 128, 128, 64));
+    subGrid.setColor(QColor(128, 128, 128, 96));
     subGrid.setStyle(Qt::DotLine);
 
-    d->m_painter.setFont(QFont("Courier New", (d->m_zoomRatio * 12.0), QFont::Medium));
+    d->m_labelFont.setPixelSize(12);
+
+    d->m_painter.setFont(d->m_labelFont);
     d->m_painter.setBrush(Qt::transparent);
 
     const float labelBias = -0.02;
@@ -1425,6 +1445,52 @@ void Scatter2dChart::drawLabels()
     d->m_painter.restore();
 }
 
+void Scatter2dChart::drawRulers()
+{
+    d->m_painter.save();
+    d->m_painter.setRenderHint(QPainter::Antialiasing);
+
+    if (d->m_bgColor != Qt::black) {
+        d->m_painter.setCompositionMode(QPainter::CompositionMode_Difference);
+    }
+
+    d->m_labelFont.setPixelSize(12);
+
+    d->m_painter.setFont(d->m_labelFont);
+    d->m_painter.setBrush(Qt::transparent);
+
+    const double ratio = d->m_zoomRatio * d->m_pixmapSize;
+    // draw ruler here
+    const int iteRatio = [&]() {
+        if (ratio >= 7.0) {
+            return 1;
+        } else if (ratio >= 5.0) {
+            return 2;
+        } else if (ratio >= 2.0) {
+            return 5;
+        }
+        return 10;
+    }();
+
+    d->m_painter.setPen(Qt::gray);
+    for (int i = -50; i < 100; i += iteRatio) {
+        const double posX = mapPoint(QPointF(i / 100.0, 0)).x();
+        const double posY = mapPoint(QPointF(0, i / 100.0)).y();
+        if (posX > 0 && posX < d->m_pixmap.width()) {
+            d->m_painter.translate(QPointF(posX, 5));
+            d->m_painter.drawText(QRect(-20, 0, 40, 40), Qt::AlignHCenter | Qt::AlignTop, QString::number(i / 100.0));
+        }
+        d->m_painter.resetTransform();
+        if (posY > 0 && posY < d->m_pixmap.height()) {
+            d->m_painter.translate(QPointF(d->m_pixmap.width() - 5, posY));
+            d->m_painter.drawText(QRect(-40, -20, 40, 40), Qt::AlignVCenter | Qt::AlignRight, QString::number(i / 100.0));
+        }
+        d->m_painter.resetTransform();
+    }
+
+    d->m_painter.restore();
+}
+
 void Scatter2dChart::doUpdate()
 {
     d->needUpdatePixmap = false;
@@ -1451,6 +1517,9 @@ void Scatter2dChart::doUpdate()
 
     if (d->enableGrids) {
         drawGrids();
+    }
+
+    if (d->enableSpectralLine) {
         drawSpectralLine();
     }
 
@@ -1482,6 +1551,10 @@ void Scatter2dChart::doUpdate()
 
     if (d->enableBlackbodyLocus) {
         drawBlackbodyLocus();
+    }
+
+    if (d->enableRulers) {
+        drawRulers();
     }
 
     if (d->enableLabels) {
@@ -1777,6 +1850,9 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addMenu(&showOverlays);
     showOverlays.addAction(d->drawLabels);
     showOverlays.addAction(d->drawGrids);
+    showOverlays.addAction(d->drawRulers);
+    showOverlays.addSeparator();
+    showOverlays.addAction(d->drawSpectralLine);
     showOverlays.addAction(d->drawSrgbGamut);
     showOverlays.addAction(d->drawImgGamut);
     showOverlays.addAction(d->drawMacAdamEllipses);
@@ -1899,6 +1975,8 @@ void Scatter2dChart::changeProperties()
 {
     d->enableLabels = d->drawLabels->isChecked();
     d->enableGrids = d->drawGrids->isChecked();
+    d->enableSpectralLine = d->drawSpectralLine->isChecked();
+    d->enableRulers = d->drawRulers->isChecked();
     d->enableSrgbGamut = d->drawSrgbGamut->isChecked();
     d->enableImgGamut = d->drawImgGamut->isChecked();
     d->enableMacAdamEllipses = d->drawMacAdamEllipses->isChecked();

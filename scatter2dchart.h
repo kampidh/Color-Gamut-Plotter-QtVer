@@ -81,6 +81,7 @@ private:
     void drawBlackbodyLocus();
     void drawGrids();
     void drawLabels();
+    void drawRulers();
     void doUpdate();
     void whenScrollTimerEnds();
     void drawDownscaled(int delayms);
