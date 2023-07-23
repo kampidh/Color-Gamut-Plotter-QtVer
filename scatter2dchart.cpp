@@ -176,7 +176,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->m_imageFormat = QImage::Format_ARGB32;
 
     d->m_labelFont = QFont("Courier New", 11, QFont::Medium);
-    d->m_bgColor = Qt::black;
+    d->m_bgColor = QColor(16,16,16,255);
 
     d->m_clipb = QApplication::clipboard();
 
