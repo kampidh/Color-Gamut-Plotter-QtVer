@@ -657,7 +657,7 @@ void Scatter2dChart::drawDataPoints()
     // scoop actual points into render queue
     if (needUpdate) {
         // progressive param
-        const int thrCount = (d->isDownscaled ? 2 : d->m_idealThrCount);
+        const int thrCount = (d->isDownscaled ? 1 : d->m_idealThrCount);
         const int chunkSize = d->m_neededParticles / thrCount;
 
         // bucket param
