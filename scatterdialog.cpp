@@ -77,7 +77,8 @@ ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidg
 
 ScatterDialog::~ScatterDialog()
 {
-    delete d;
+    // move delete to close event
+    // delete d;
 }
 
 void ScatterDialog::closeEvent(QCloseEvent *event)
@@ -85,6 +86,8 @@ void ScatterDialog::closeEvent(QCloseEvent *event)
     if (d->m_is2d) {
         d->m_2dScatter->cancelRender();
     }
+    event->accept();
+    delete d;
 }
 
 void ScatterDialog::overrideSettings(const PlotSetting2D &plot)
