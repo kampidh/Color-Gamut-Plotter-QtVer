@@ -279,7 +279,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->drawStats->setChecked(d->enableStats);
     connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->use16Bit = new QAction("16 bit per channel");
+    d->use16Bit = new QAction("16 bits per channel plot");
     d->use16Bit->setCheckable(true);
     d->use16Bit->setChecked(d->enable16Bit);
     connect(d->use16Bit, &QAction::triggered, this, &Scatter2dChart::changeProperties);
@@ -1864,6 +1864,7 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
 
     menu.addSeparator();
     menu.addAction(d->setAntiAliasing);
+    menu.addAction(d->use16Bit);
     menu.addAction(d->setAlpha);
     menu.addAction(d->setParticleSize);
     menu.addAction(d->setBgColor);
@@ -1875,8 +1876,6 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     extra.addSeparator();
     extra.addAction(d->setPixmapSize);
     extra.addAction(d->saveSlicesAsImage);
-    extra.addSeparator();
-    extra.addAction(d->use16Bit);
 
     menu.exec(event->globalPos());
 }
