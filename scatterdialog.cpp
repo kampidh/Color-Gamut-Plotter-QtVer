@@ -73,6 +73,8 @@ ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidg
     d->m_fName = fName;
     d->m_plotType = plotType;
     d->m_plotDensity = plotDensity;
+
+    setAttribute(Qt::WA_DeleteOnClose);
 }
 
 ScatterDialog::~ScatterDialog()

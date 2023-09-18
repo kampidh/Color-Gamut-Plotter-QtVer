@@ -35,6 +35,7 @@ inline double value(const T src)
 }
 
 const static float adaptationState = 0.0;
+const static cmsUInt32Number displayPreviewIntent = INTENT_RELATIVE_COLORIMETRIC;
 
 class Q_DECL_HIDDEN ImageParserSC::Private
 {
@@ -117,7 +118,7 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
         }
     }();
 
-    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, INTENT_RELATIVE_COLORIMETRIC, 0);
+    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, displayPreviewIntent, 0);
 
     const quint8 chNum = 4;
 
@@ -256,7 +257,7 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
         }
     }();
 
-    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, INTENT_RELATIVE_COLORIMETRIC, 0);
+    const cmsHTRANSFORM xyztosrgb = cmsCreateTransform(hsXYZ, TYPE_XYZ_DBL, hsRGB, TYPE_RGB_FLT, displayPreviewIntent, 0);
 
     d->m_outCp = outCp;
 
