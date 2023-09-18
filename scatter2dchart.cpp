@@ -747,7 +747,7 @@ void Scatter2dChart::drawDataPoints()
         d->m_future.waitForFinished();
         for (auto it = d->m_future.future().constBegin(); it != d->m_future.future().constEnd(); it++) {
             if (!it->first.isNull()) {
-                d->m_painter.drawImage(it->second, it->first);
+                d->m_painter.drawImage(it->second, std::move(it->first));
             }
         }
         d->m_painter.restore();
@@ -758,7 +758,7 @@ void Scatter2dChart::drawDataPoints()
         if (!fragmentedColPoints.isEmpty()) {
             const auto out = paintInChunk(fragmentedColPoints.at(0));
             d->m_ScatterTempPixmap = out.first;
-            d->m_painter.drawImage(d->m_pixmap.rect(), out.first);
+            d->m_painter.drawImage(d->m_pixmap.rect(), std::move(out.first));
         }
         d->finishedRender = false;
         d->m_lastDrawnParticles = d->m_drawnParticles;
@@ -769,12 +769,12 @@ void Scatter2dChart::drawDataPoints()
             } else {
                 d->m_painter.setOpacity(0.75);
             }
-            d->m_painter.drawImage(d->m_pixmap.rect(), d->m_ScatterTempPixmap);
+            d->m_painter.drawImage(d->m_pixmap.rect(), std::move(d->m_ScatterTempPixmap));
             d->m_painter.setOpacity(1);
             d->m_painter.setCompositionMode(QPainter::CompositionMode_Lighten);
         }
 
-        d->m_painter.drawImage(d->m_pixmap.rect(), d->m_ScatterPixmap);
+        d->m_painter.drawImage(d->m_pixmap.rect(), std::move(d->m_ScatterPixmap));
     }
 
     d->m_painter.restore();
@@ -1571,7 +1571,7 @@ void Scatter2dChart::paintEvent(QPaintEvent *)
     if (d->needUpdatePixmap) {
         doUpdate();
     }
-    p.drawImage(0, 0, d->m_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    p.drawImage(0, 0, std::move(d->m_pixmap).scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (!d->isDownscaled) {
         setCursor(Qt::ArrowCursor);
     }
@@ -1588,7 +1588,7 @@ void Scatter2dChart::drawFutureAt(int ft)
     tempPainter.begin(&d->m_ScatterPixmap);
     tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
-    tempPainter.drawImage(resu.second, resu.first);
+    tempPainter.drawImage(resu.second, std::move(resu.first));
 
     tempPainter.end();
 
