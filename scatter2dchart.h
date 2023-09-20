@@ -68,6 +68,7 @@ private slots:
     void saveSlicesAsImage();
     void drawFutureAt(int ft);
     void onFinishedDrawing();
+    void onFinishedBucket();
 
 private:
     void drawDataPoints();

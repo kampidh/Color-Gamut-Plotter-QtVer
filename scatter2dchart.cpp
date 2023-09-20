@@ -52,7 +52,7 @@ static const int maxPixelsBeforeBucket = 4000000;
  * - Bucket, mostly slower but lighter in RAM
  * - Progressive, mostly faster but RAM heavy especially with large upscaling
  */
-static const int bucketDefaultSize = 256;
+static const int bucketDefaultSize = 1024;
 static const int bucketDownscaledSize = 1024;
 
 class Q_DECL_HIDDEN Scatter2dChart::Private
@@ -68,6 +68,7 @@ public:
     bool finishedRender{false};
     bool isCancelFired{false};
     bool isSettingOverride{false};
+    bool isBucketReady{false};
     QPainter m_painter;
     QImage m_pixmap;
     QImage m_ScatterPixmap;
@@ -139,8 +140,11 @@ public:
     QAction *saveSlicesAsImage;
     QAction *drawStats;
     QAction *use16Bit;
+    QAction *drawBucketVis;
+    QAction *forceBucketRendering;
 
     QFutureWatcher<QPair<QImage, QRect>> m_future;
+    QFutureWatcher<QVector<QPair<QVector<ColorPoint *>, QRect>>> m_futureData;
 
     bool enableLabels{true};
     bool enableGrids{true};
@@ -157,6 +161,8 @@ public:
     bool enableAA{false};
     bool enableStats{false};
     bool enable16Bit{false};
+    bool enableBucketVis{false};
+    bool enableForceBucketRendering{false};
 
     QClipboard *m_clipb;
 };
@@ -284,6 +290,16 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     d->use16Bit->setChecked(d->enable16Bit);
     connect(d->use16Bit, &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
+    d->drawBucketVis = new QAction("Bucket render visualization");
+    d->drawBucketVis->setCheckable(true);
+    d->drawBucketVis->setChecked(d->enableBucketVis);
+    connect(d->drawBucketVis, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
+    d->forceBucketRendering = new QAction("Always use bucket rendering");
+    d->forceBucketRendering->setCheckable(true);
+    d->forceBucketRendering->setChecked(d->enableForceBucketRendering);
+    connect(d->forceBucketRendering, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+
     if (QThread::idealThreadCount() > 1) {
         d->m_idealThrCount = QThread::idealThreadCount();
     } else {
@@ -337,6 +353,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
     connect(&d->m_future, &QFutureWatcher<void>::resultReadyAt, this, &Scatter2dChart::drawFutureAt);
     connect(&d->m_future, &QFutureWatcher<void>::finished, this, &Scatter2dChart::onFinishedDrawing);
+    connect(&d->m_futureData, &QFutureWatcher<void>::finished, this, &Scatter2dChart::onFinishedBucket);
 }
 
 Scatter2dChart::~Scatter2dChart()
@@ -524,7 +541,7 @@ void Scatter2dChart::drawDataPoints()
         }
         const QSize workerDim = [&]() {
             if (d->useBucketRender) {
-                return QSize(bucketDefaultSize, bucketDefaultSize);
+                return QSize(chunk.second.width(), chunk.second.width());
             }
             return d->m_pixmap.size();
         }();
@@ -592,6 +609,80 @@ void Scatter2dChart::drawDataPoints()
         return {tempMap, chunk.second};
     }; // paintInChunk
 
+    // internal function for adaptive bucket sampling
+    std::function<QVector<QPair<QVector<ColorPoint *>, QRect>>(
+        const QVector<QPair<QVector<ColorPoint *>, QRect>> &)> const bucketDataCalc =
+        [&](const QVector<QPair<QVector<ColorPoint *>, QRect>> &vecIn) -> QVector<QPair<QVector<ColorPoint *>, QRect>> {
+
+        const int pixmapH = d->m_pixmap.height();
+        const int pixmapW = d->m_pixmap.width();
+        const int bucketPadding = d->m_particleSize;
+
+        QVector<QPair<QVector<ColorPoint *>, QRect>> vecInternal = vecIn;
+        const int subdivideNum = 2;
+        const int maxParticle = 100000;
+
+        int iterBucketSize = 1024;
+        const int minimumBucketSize = 8;
+
+        while (iterBucketSize > minimumBucketSize) {
+            const int fragSize = vecInternal.size();
+            bool hasOverparticle = false;
+
+            for (int i = 0; i < fragSize; i++) {
+                QVector<QPair<QVector<ColorPoint *>, QRect>> subdivBucketStorage;
+                if (vecInternal.at(i).first.size() > maxParticle) {
+                    const int subdivideBucketSize = vecInternal.at(i).second.width() / subdivideNum;
+                    const int sdivBuckets = subdivideNum * subdivideNum;
+
+                    hasOverparticle = true;
+                    iterBucketSize = subdivideBucketSize;
+                    subdivBucketStorage.clear();
+                    subdivBucketStorage.resize(sdivBuckets);
+                    for (int pts = 0; pts < vecInternal.at(i).first.size(); pts++) {
+                        const QPointF map = mapPoint(QPointF(vecInternal.at(i).first.at(pts)->first.X, vecInternal.at(i).first.at(pts)->first.Y));
+                        const auto sdPoints = vecInternal.at(i).first.at(pts);
+
+                        if (d->isCancelFired) {
+                            break;
+                        }
+
+                        for (int subH = 0; subH < subdivideNum; subH++) {
+                            const int hAbsPos = subH * subdivideNum;
+                            for (int subW = 0; subW < subdivideNum; subW++) {
+                                const int sOrigX = vecInternal.at(i).second.left() + (subW * subdivideBucketSize);
+                                const int sOrigY = vecInternal.at(i).second.top() + (subH * subdivideBucketSize);
+                                const QRect bckRect{sOrigX, sOrigY, subdivideBucketSize, subdivideBucketSize};
+
+                                if ((map.x() > sOrigX - bucketPadding && map.x() < (sOrigX + subdivideBucketSize) + (bucketPadding * 2))
+                                    && (map.y() > sOrigY - bucketPadding && map.y() < (sOrigY + subdivideBucketSize) + (bucketPadding * 2))
+                                    && (map.x() > 0 && map.x() < pixmapW) && (map.y() > 0 && map.y() < pixmapH)) {
+
+                                    subdivBucketStorage[subW + hAbsPos].second = bckRect;
+                                    subdivBucketStorage[subW + hAbsPos].first.append(sdPoints);
+                                }
+                            }
+                        }
+                    }
+
+                    vecInternal.append(std::move(subdivBucketStorage));
+                    vecInternal[i].first.clear();
+                }
+            }
+
+            vecInternal.erase(std::remove_if(vecInternal.begin(),
+                                             vecInternal.end(),
+                                             [](QPair<QVector<ColorPoint *>, QRect> i) {
+                                                 return i.first.isEmpty();
+                                             }),
+                              vecInternal.end());
+
+            if (!hasOverparticle) break;
+        }
+
+        return vecInternal;
+    }; // bucketDataCalc
+
     // prepare window dimension
     const RenderBounds rb = getRenderBounds();
     const int pixmapH = d->m_pixmap.height();
@@ -599,7 +690,7 @@ void Scatter2dChart::drawDataPoints()
 
     const int pixmapPixSize = pixmapH * pixmapW;
 
-    if (pixmapPixSize > maxPixelsBeforeBucket && !d->isDownscaled) {
+    if ((pixmapPixSize > maxPixelsBeforeBucket || d->enableForceBucketRendering) && !d->isDownscaled) {
         d->useBucketRender = true;
     } else {
         d->useBucketRender = false;
@@ -663,10 +754,18 @@ void Scatter2dChart::drawDataPoints()
         // bucket param
         const int bucketWNum = std::ceil(pixmapW / (bucketSize * 1.0));
         const int bucketHNum = std::ceil(pixmapH / (bucketSize * 1.0));
-        const int bucketTotalNum = bucketWNum * bucketHNum;
 
         if (d->useBucketRender) {
-            fragmentedColPoints.resize(bucketTotalNum);
+            for (int h = 0; h < bucketHNum; h++) {
+                // const int hAbsPos = h * bucketWNum;
+                for (int w = 0; w < bucketWNum; w++) {
+                    const int orX = w * bucketSize;
+                    const int orY = h * bucketSize;
+
+                    const QRect bucket(orX, orY, bucketSize, bucketSize);
+                    fragmentedColPoints.append(QPair<QVector<ColorPoint *>, QRect>({}, bucket));
+                }
+            }
         }
 
         // divide to chunks
@@ -681,31 +780,22 @@ void Scatter2dChart::drawDataPoints()
                     continue;
                 }
             }
+
+            // iterate over the buckets for each points
             if (d->useBucketRender) {
                 const QPointF map = mapPoint(QPointF(d->m_cPoints->at(i).first.X, d->m_cPoints->at(i).first.Y));
                 bool isDataWritten = false;
 
                 // iterate over the buckets for each points
-                for (int h = 0; h < bucketHNum; h++) {
-                    const int hAbsPos = h * bucketWNum;
-                    for (int w = 0; w < bucketWNum; w++) {
-                        const int bucketAbsPos = hAbsPos + w;
-                        const int orX = w * bucketSize;
-                        const int orY = h * bucketSize;
-                        const int maxX = orX + bucketSize;
-                        const int maxY = orY + bucketSize;
-                        if ((map.x() > orX - bucketPadding && map.x() < maxX + (bucketPadding * 2))
-                            && (map.y() > orY - bucketPadding && map.y() < maxY + (bucketPadding * 2))
-                            && (map.x() > 0 && map.x() < pixmapW) && (map.y() > 0 && map.y() < pixmapH)) {
-                            isDataWritten = true;
-//                            const QPoint origin(orX, orY);
-                            const QRect bucket(orX, orY, bucketSize, bucketSize);
-                            fragmentedColPoints[bucketAbsPos].second = bucket;
-                            fragmentedColPoints[bucketAbsPos].first.append(
-                                const_cast<ColorPoint *>(&d->m_cPoints->at(i)));
-                        }
+                for (int bck = 0; bck < fragmentedColPoints.size(); bck++) {
+                    if ((map.x() > fragmentedColPoints[bck].second.left() - bucketPadding && map.x() < (fragmentedColPoints[bck].second.left() + bucketSize) + (bucketPadding * 2))
+                        && (map.y() > fragmentedColPoints[bck].second.top() - bucketPadding && map.y() < (fragmentedColPoints[bck].second.top() + bucketSize) + (bucketPadding * 2))
+                        && (map.x() > 0 && map.x() < pixmapW) && (map.y() > 0 && map.y() < pixmapH)) {
+                        fragmentedColPoints[bck].first.append(const_cast<ColorPoint *>(&d->m_cPoints->at(i)));
+                        isDataWritten = true;
                     }
                 }
+
                 // make sure padding data isn't counted
                 if (isDataWritten) {
                     d->m_drawnParticles++;
@@ -727,6 +817,11 @@ void Scatter2dChart::drawDataPoints()
             }
         }
 
+        // Adaptive bucket
+        if (d->useBucketRender && !d->isDownscaled) {
+            d->m_futureData.setFuture(QtConcurrent::run(bucketDataCalc, fragmentedColPoints));
+        }
+
         // pick leftover (last) progressive pass
         if (!d->useBucketRender && temporaryColPoints.size() > 0) {
             fragmentedColPoints.append({temporaryColPoints, d->m_pixmap.rect()});
@@ -734,10 +829,27 @@ void Scatter2dChart::drawDataPoints()
         }
     }
 
+    if (d->useBucketRender && d->isBucketReady) {
+        fragmentedColPoints = d->m_futureData.result();
+        d->finishedRender = false;
+        d->inputScatterData = true;
+    }
+
     if ((!d->isDownscaled && d->inputScatterData) || d->renderSlices) {
+        if (d->renderSlices && d->useBucketRender && d->m_futureData.isRunning()) {
+            d->m_futureData.waitForFinished();
+            if (d->m_futureData.isFinished()) {
+                fragmentedColPoints = d->m_futureData.result();
+            }
+        }
         d->inputScatterData = false;
-        d->m_future.setFuture(QtConcurrent::mapped(fragmentedColPoints, paintInChunk));
-        d->m_lastDrawnParticles = d->m_drawnParticles;
+        if ((d->useBucketRender && d->isBucketReady) || !d->useBucketRender) {
+            d->isBucketReady = false;
+            d->m_future.setFuture(QtConcurrent::mapped(fragmentedColPoints, paintInChunk));
+        }
+        if (!fragmentedColPoints.isEmpty() && d->m_drawnParticles > 0) {
+            d->m_lastDrawnParticles = d->m_drawnParticles;
+        }
         d->m_renderTimer.start();
     }
 
@@ -1589,6 +1701,11 @@ void Scatter2dChart::drawFutureAt(int ft)
     tempPainter.setCompositionMode(QPainter::CompositionMode_Lighten);
 
     tempPainter.drawImage(resu.second, std::move(resu.first));
+    if (d->useBucketRender && d->enableBucketVis) {
+        tempPainter.setPen(QColor(200, 200, 200, 96));
+        tempPainter.setBrush(Qt::transparent);
+        tempPainter.drawRect(resu.second);
+    }
 
     tempPainter.end();
 
@@ -1605,6 +1722,13 @@ void Scatter2dChart::cancelRender()
         d->m_future.cancel();
         d->m_future.waitForFinished();
     }
+    if (d->m_futureData.isRunning()) {
+        d->m_locker.lock();
+        d->isCancelFired = true;
+        d->m_locker.unlock();
+        d->m_futureData.cancel();
+        d->m_futureData.waitForFinished();
+    }
 }
 
 void Scatter2dChart::onFinishedDrawing()
@@ -1615,6 +1739,15 @@ void Scatter2dChart::onFinishedDrawing()
         if (d->m_renderTimer.isValid()) {
             d->m_msecRenderTime = d->m_renderTimer.elapsed();
         }
+        update();
+    }
+}
+
+void Scatter2dChart::onFinishedBucket()
+{
+    if (!d->m_futureData.isCanceled()) {
+        d->needUpdatePixmap = true;
+        d->isBucketReady = true;
         update();
     }
 }
@@ -1874,6 +2007,9 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     extra.addAction(d->drawStats);
     extra.addAction(d->setStaticDownscale);
     extra.addSeparator();
+    extra.addAction(d->forceBucketRendering);
+    extra.addAction(d->drawBucketVis);
+    extra.addSeparator();
     extra.addAction(d->setPixmapSize);
     extra.addAction(d->saveSlicesAsImage);
 
@@ -1986,6 +2122,8 @@ void Scatter2dChart::changeProperties()
     d->enableStaticDownscale = d->setStaticDownscale->isChecked();
     d->enableAA = d->setAntiAliasing->isChecked();
     d->enableStats = d->drawStats->isChecked();
+    d->enableBucketVis = d->drawBucketVis->isChecked();
+    d->enableForceBucketRendering = d->forceBucketRendering->isChecked();
 
     if (d->use16Bit->isChecked()) {
         d->enable16Bit = true;
