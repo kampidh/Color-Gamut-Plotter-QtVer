@@ -365,7 +365,7 @@ Scatter2dChart::~Scatter2dChart()
 void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
 {
     d->enableAA = plot.enableAA;
-    d->enableStaticDownscale = plot.disableDynPanning;
+    d->enableForceBucketRendering = plot.forceBucket;
     d->enable16Bit = plot.use16Bit;
 
     d->enableLabels = plot.showStatistics;
@@ -395,6 +395,7 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
     d->setAntiAliasing->setChecked(d->enableAA);
     d->use16Bit->setChecked(d->enable16Bit);
+    d->forceBucketRendering->setChecked(d->enableForceBucketRendering);
 
     if (d->enable16Bit) {
         d->m_imageFormat = QImage::Format_RGBA64;

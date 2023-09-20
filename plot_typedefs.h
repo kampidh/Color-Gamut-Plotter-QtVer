@@ -20,7 +20,7 @@ typedef QPair<QPointF, QColor> ColorPointMapped; // this one is unused
 
 typedef struct {
     bool enableAA;
-    bool disableDynPanning;
+    bool forceBucket;
     bool use16Bit;
     bool showStatistics;
     bool showGridsAndSpectrum;

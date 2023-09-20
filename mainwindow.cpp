@@ -161,7 +161,7 @@ void MainWindow::goPlot()
     if (override2dChk->isChecked() && plotTypeIndex == 2) {
         const PlotSetting2D plotSet{
             enableAAChk->isChecked(),
-            disableDynamicPanChk->isChecked(),
+            forceBucketChk->isChecked(),
             use16BitChk->isChecked(),
             showStatChk->isChecked(),
             showGridsChk->isChecked(),

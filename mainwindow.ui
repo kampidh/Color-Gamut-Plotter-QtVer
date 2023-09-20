@@ -31,6 +31,9 @@
   <property name="windowTitle">
    <string>Qt CIE1931 Gamut Plotter</string>
   </property>
+  <property name="toolTip">
+   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;In some cases, bucket rendering can reduce memory usage compared to progressive rendering.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_4">
     <item>
@@ -150,16 +153,16 @@
             </widget>
            </item>
            <item>
-            <widget class="QCheckBox" name="disableDynamicPanChk">
+            <widget class="QCheckBox" name="use16BitChk">
              <property name="text">
-              <string>Disable dynamic panning</string>
+              <string>16 bpc</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QCheckBox" name="use16BitChk">
+            <widget class="QCheckBox" name="forceBucketChk">
              <property name="text">
-              <string>16 bpc</string>
+              <string>Force bucket rendering</string>
              </property>
             </widget>
            </item>
