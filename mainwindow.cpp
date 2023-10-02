@@ -105,6 +105,19 @@ void MainWindow::goPlot()
         return;
     }
 
+    /*
+     * Explicitly disable WebP for now, as I am still don't know how to patch it into Qt 5.15 yet...
+     *
+     * Note: if you're compiling this yourself and have already patched CVE-2023-4863 into
+     * qtimageformats, you can disable this check and continue reading the WebP images.
+     */
+    if (QFileInfo(fileName).completeSuffix().contains("webp", Qt::CaseInsensitive)) {
+        QMessageBox msg;
+        msg.warning(this, "Warning", "webp images are currently disabled!\nReason: unpatched CVE-2023-4863");
+        plotBtn->setEnabled(true);
+        return;
+    }
+
     const int plotTypeIndex = plotTypeCmb->currentIndex();
     const int plotDensNdx = plotDensCmb->currentIndex();
     const int plotDensity = [&]() {
