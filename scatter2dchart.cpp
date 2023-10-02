@@ -847,6 +847,8 @@ void Scatter2dChart::drawDataPoints()
         if ((d->useBucketRender && d->isBucketReady) || !d->useBucketRender) {
             d->isBucketReady = false;
             d->m_future.setFuture(QtConcurrent::mapped(fragmentedColPoints, paintInChunk));
+            fragmentedColPoints.clear();
+            fragmentedColPoints.squeeze();
         }
         if (!fragmentedColPoints.isEmpty() && d->m_drawnParticles > 0) {
             d->m_lastDrawnParticles = d->m_drawnParticles;
