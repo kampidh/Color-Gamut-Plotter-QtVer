@@ -16,6 +16,7 @@
 
 #include <QFuture>
 #include <QtConcurrent>
+#include <QGenericMatrix>
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,9 @@ public:
     QVector<ColorPoint> *m_outCp{nullptr};
 
     bool m_isSrgb{false};
+    bool hasColorants{false};
+
+    cmsCIEXYZTRIPLE colorants;
 };
 
 ImageParserSC::ImageParserSC()
@@ -106,6 +110,93 @@ void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint>
         cmsGetProfileInfo(hsIMG, cmsInfoDescription, cmsNoLanguage, cmsNoCountry, tmp, tmpSize);
         d->m_profileName = QString::fromWCharArray(tmp);
         delete[] tmp;
+
+        // cherrypick from krita
+
+        cmsCIEXYZ mediaWhitePoint{0,0,0};
+        cmsCIExyY whitePoint{0,0,0};
+
+        cmsCIEXYZ baseMediaWhitePoint;//dummy to hold copy of mediawhitepoint if this is modified by chromatic adaption.
+        cmsCIEXYZ *mediaWhitePointPtr;
+        bool whiteComp[3];
+        bool whiteIsD50;
+        // Possible bug in profiles: there are in fact some that says they contain that tag
+        //    but in fact the pointer is null.
+        //    Let's not crash on it anyway, and assume there is no white point instead.
+        //    BUG:423685
+        if (cmsIsTag(hsIMG, cmsSigMediaWhitePointTag)
+            && (mediaWhitePointPtr = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigMediaWhitePointTag))) {
+
+            mediaWhitePoint = *(mediaWhitePointPtr);
+            baseMediaWhitePoint = mediaWhitePoint;
+
+            whiteComp[0] = std::fabs(baseMediaWhitePoint.X - cmsD50_XYZ()->X) < 0.00001;
+            whiteComp[1] = std::fabs(baseMediaWhitePoint.Y - cmsD50_XYZ()->Y) < 0.00001;
+            whiteComp[2] = std::fabs(baseMediaWhitePoint.Z - cmsD50_XYZ()->Z) < 0.00001;
+            whiteIsD50 = std::all_of(std::begin(whiteComp), std::end(whiteComp), [](bool b) {return b;});
+
+            cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+            cmsCIEXYZ *CAM1;
+            if (cmsIsTag(hsIMG, cmsSigChromaticAdaptationTag)
+                && (CAM1 = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigChromaticAdaptationTag))
+                && whiteIsD50) {
+                //the chromatic adaption tag represent a matrix from the actual white point of the profile to D50.
+
+                       //We first put all our data into structures we can manipulate.
+                double d3dummy [3] = {mediaWhitePoint.X, mediaWhitePoint.Y, mediaWhitePoint.Z};
+                QGenericMatrix<1, 3, double> whitePointMatrix(d3dummy);
+                QTransform invertDummy(CAM1[0].X, CAM1[0].Y, CAM1[0].Z, CAM1[1].X, CAM1[1].Y, CAM1[1].Z, CAM1[2].X, CAM1[2].Y, CAM1[2].Z);
+                //we then abuse QTransform's invert function because it probably does matrix inversion 20 times better than I can program.
+                //if the matrix is uninvertable, invertedDummy will be an identity matrix, which for us means that it won't give any noticeable
+                //effect when we start multiplying.
+                QTransform invertedDummy = invertDummy.inverted();
+                //we then put the QTransform into a generic 3x3 matrix.
+                double d9dummy [9] = {invertedDummy.m11(), invertedDummy.m12(), invertedDummy.m13(),
+                    invertedDummy.m21(), invertedDummy.m22(), invertedDummy.m23(),
+                    invertedDummy.m31(), invertedDummy.m32(), invertedDummy.m33()
+                };
+                QGenericMatrix<3, 3, double> chromaticAdaptionMatrix(d9dummy);
+                //multiplying our inverted adaption matrix with the whitepoint gives us the right whitepoint.
+                QGenericMatrix<1, 3, double> result = chromaticAdaptionMatrix * whitePointMatrix;
+                //and then we pour the matrix into the whitepoint variable. Generic matrix does row/column for indices even though it
+                //uses column/row for initialising.
+                mediaWhitePoint.X = result(0, 0);
+                mediaWhitePoint.Y = result(1, 0);
+                mediaWhitePoint.Z = result(2, 0);
+                cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+            }
+        }
+
+               // in case missing whitepoint tag
+        if (mediaWhitePoint.X == 0 && mediaWhitePoint.Y == 0 && mediaWhitePoint.Z == 0) {
+            mediaWhitePoint = *cmsD50_XYZ();
+            cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+        }
+
+        cmsCIEXYZ *tempColorantsRed, *tempColorantsGreen, *tempColorantsBlue;
+        // Note: don't assume that cmsIsTag is enough to check for errors; check the pointers, too
+        // BUG:423685
+        if (cmsIsTag(hsIMG, cmsSigRedColorantTag) && cmsIsTag(hsIMG, cmsSigRedColorantTag) && cmsIsTag(hsIMG, cmsSigRedColorantTag)
+            && (tempColorantsRed = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigRedColorantTag))
+            && (tempColorantsGreen = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigGreenColorantTag))
+            && (tempColorantsBlue = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigBlueColorantTag))) {
+            cmsCIEXYZTRIPLE tempColorants;
+            tempColorants.Red = *tempColorantsRed;
+            tempColorants.Green = *tempColorantsGreen;
+            tempColorants.Blue = *tempColorantsBlue;
+
+            cmsCIEXYZTRIPLE colorants;
+
+                   //convert to d65, this is useless.
+            cmsAdaptToIlluminant(&colorants.Red, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Red);
+            cmsAdaptToIlluminant(&colorants.Green, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Green);
+            cmsAdaptToIlluminant(&colorants.Blue, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Blue);
+
+            d->colorants = colorants;
+            d->hasColorants = true;
+        } else {
+            d->hasColorants = false;
+        }
     }
 
     const cmsHTRANSFORM srgbtoxyz =
@@ -245,6 +336,93 @@ void ImageParserSC::inputFile(const QByteArray &rawData,
         cmsGetProfileInfo(hsIMG, cmsInfoDescription, cmsNoLanguage, cmsNoCountry, tmp, tmpSize);
         d->m_profileName = QString::fromWCharArray(tmp);
         delete[] tmp;
+
+        // cherrypick from krita
+
+        cmsCIEXYZ mediaWhitePoint{0,0,0};
+        cmsCIExyY whitePoint{0,0,0};
+
+        cmsCIEXYZ baseMediaWhitePoint;//dummy to hold copy of mediawhitepoint if this is modified by chromatic adaption.
+        cmsCIEXYZ *mediaWhitePointPtr;
+        bool whiteComp[3];
+        bool whiteIsD50;
+        // Possible bug in profiles: there are in fact some that says they contain that tag
+        //    but in fact the pointer is null.
+        //    Let's not crash on it anyway, and assume there is no white point instead.
+        //    BUG:423685
+        if (cmsIsTag(hsIMG, cmsSigMediaWhitePointTag)
+            && (mediaWhitePointPtr = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigMediaWhitePointTag))) {
+
+            mediaWhitePoint = *(mediaWhitePointPtr);
+            baseMediaWhitePoint = mediaWhitePoint;
+
+            whiteComp[0] = std::fabs(baseMediaWhitePoint.X - cmsD50_XYZ()->X) < 0.00001;
+            whiteComp[1] = std::fabs(baseMediaWhitePoint.Y - cmsD50_XYZ()->Y) < 0.00001;
+            whiteComp[2] = std::fabs(baseMediaWhitePoint.Z - cmsD50_XYZ()->Z) < 0.00001;
+            whiteIsD50 = std::all_of(std::begin(whiteComp), std::end(whiteComp), [](bool b) {return b;});
+
+            cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+            cmsCIEXYZ *CAM1;
+            if (cmsIsTag(hsIMG, cmsSigChromaticAdaptationTag)
+                && (CAM1 = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigChromaticAdaptationTag))
+                && whiteIsD50) {
+                //the chromatic adaption tag represent a matrix from the actual white point of the profile to D50.
+
+                       //We first put all our data into structures we can manipulate.
+                double d3dummy [3] = {mediaWhitePoint.X, mediaWhitePoint.Y, mediaWhitePoint.Z};
+                QGenericMatrix<1, 3, double> whitePointMatrix(d3dummy);
+                QTransform invertDummy(CAM1[0].X, CAM1[0].Y, CAM1[0].Z, CAM1[1].X, CAM1[1].Y, CAM1[1].Z, CAM1[2].X, CAM1[2].Y, CAM1[2].Z);
+                //we then abuse QTransform's invert function because it probably does matrix inversion 20 times better than I can program.
+                //if the matrix is uninvertable, invertedDummy will be an identity matrix, which for us means that it won't give any noticeable
+                //effect when we start multiplying.
+                QTransform invertedDummy = invertDummy.inverted();
+                //we then put the QTransform into a generic 3x3 matrix.
+                double d9dummy [9] = {invertedDummy.m11(), invertedDummy.m12(), invertedDummy.m13(),
+                    invertedDummy.m21(), invertedDummy.m22(), invertedDummy.m23(),
+                    invertedDummy.m31(), invertedDummy.m32(), invertedDummy.m33()
+                };
+                QGenericMatrix<3, 3, double> chromaticAdaptionMatrix(d9dummy);
+                //multiplying our inverted adaption matrix with the whitepoint gives us the right whitepoint.
+                QGenericMatrix<1, 3, double> result = chromaticAdaptionMatrix * whitePointMatrix;
+                //and then we pour the matrix into the whitepoint variable. Generic matrix does row/column for indices even though it
+                //uses column/row for initialising.
+                mediaWhitePoint.X = result(0, 0);
+                mediaWhitePoint.Y = result(1, 0);
+                mediaWhitePoint.Z = result(2, 0);
+                cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+            }
+        }
+
+        // in case missing whitepoint tag
+        if (mediaWhitePoint.X == 0 && mediaWhitePoint.Y == 0 && mediaWhitePoint.Z == 0) {
+            mediaWhitePoint = *cmsD50_XYZ();
+            cmsXYZ2xyY(&whitePoint, &mediaWhitePoint);
+        }
+
+        cmsCIEXYZ *tempColorantsRed, *tempColorantsGreen, *tempColorantsBlue;
+        // Note: don't assume that cmsIsTag is enough to check for errors; check the pointers, too
+        // BUG:423685
+        if (cmsIsTag(hsIMG, cmsSigRedColorantTag) && cmsIsTag(hsIMG, cmsSigRedColorantTag) && cmsIsTag(hsIMG, cmsSigRedColorantTag)
+            && (tempColorantsRed = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigRedColorantTag))
+            && (tempColorantsGreen = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigGreenColorantTag))
+            && (tempColorantsBlue = (cmsCIEXYZ *)cmsReadTag(hsIMG, cmsSigBlueColorantTag))) {
+            cmsCIEXYZTRIPLE tempColorants;
+            tempColorants.Red = *tempColorantsRed;
+            tempColorants.Green = *tempColorantsGreen;
+            tempColorants.Blue = *tempColorantsBlue;
+
+            cmsCIEXYZTRIPLE colorants;
+
+            //convert to d65, this is useless.
+            cmsAdaptToIlluminant(&colorants.Red, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Red);
+            cmsAdaptToIlluminant(&colorants.Green, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Green);
+            cmsAdaptToIlluminant(&colorants.Blue, cmsD50_XYZ(), &mediaWhitePoint, &tempColorants.Blue);
+
+            d->colorants = colorants;
+            d->hasColorants = true;
+        } else {
+            d->hasColorants = false;
+        }
     }
 
     const cmsHTRANSFORM srgbtoxyz =
@@ -378,38 +556,55 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
         d->m_outCp->append(futureTmp.resultAt(i));
     }
 
-    const int sampleNum = 100;
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < sampleNum; j++) {
-            const double red = [&]() {
-                if (i == 0)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 2)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
+    if (d->hasColorants) {
+        cmsCIExyY bufxyY;
+
+        for (int i = 0; i < 3; i++) {
+            const cmsCIEXYZ bufXYZ = [&]() {
+                if (i == 0) return d->colorants.Red;
+                if (i == 1) return d->colorants.Green;
+                if (i == 2) return d->colorants.Blue;
+                return cmsCIEXYZ{};
             }();
-            const double green = [&]() {
-                if (i == 1)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 0)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
-            }();
-            const double blue = [&]() {
-                if (i == 2)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 1)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
-            }();
-            const double rgb[3] = {red, green, blue};
-            cmsCIEXYZ bufXYZ;
-            cmsCIExyY bufxyY;
-            cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
             cmsXYZ2xyY(&bufxyY, &bufXYZ);
 
             const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
             d->m_outerGamut.append(output);
+        }
+    } else {
+        const int sampleNum = 100;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < sampleNum; j++) {
+                const double red = [&]() {
+                    if (i == 0)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 2)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double green = [&]() {
+                    if (i == 1)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 0)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double blue = [&]() {
+                    if (i == 2)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 1)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double rgb[3] = {red, green, blue};
+                cmsCIEXYZ bufXYZ;
+                cmsCIExyY bufxyY;
+                cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
+                cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+                const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+                d->m_outerGamut.append(output);
+            }
         }
     }
 
@@ -513,38 +708,55 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
         d->m_outCp->append(futureTmp.resultAt(i));
     }
 
-    const int sampleNum = 100;
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < sampleNum; j++) {
-            const double red = [&]() {
-                if (i == 0)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 2)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
+    if (d->hasColorants) {
+        cmsCIExyY bufxyY;
+
+        for (int i = 0; i < 3; i++) {
+            const cmsCIEXYZ bufXYZ = [&]() {
+                if (i == 0) return d->colorants.Red;
+                if (i == 1) return d->colorants.Green;
+                if (i == 2) return d->colorants.Blue;
+                return cmsCIEXYZ{};
             }();
-            const double green = [&]() {
-                if (i == 1)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 0)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
-            }();
-            const double blue = [&]() {
-                if (i == 2)
-                    return static_cast<double>(sampleNum - j) / sampleNum;
-                if (i == 1)
-                    return static_cast<double>(j) / sampleNum;
-                return 0.0;
-            }();
-            const double rgb[3] = {red, green, blue};
-            cmsCIEXYZ bufXYZ;
-            cmsCIExyY bufxyY;
-            cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
             cmsXYZ2xyY(&bufxyY, &bufXYZ);
 
             const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
             d->m_outerGamut.append(output);
+        }
+    } else {
+        const int sampleNum = 100;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < sampleNum; j++) {
+                const double red = [&]() {
+                    if (i == 0)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 2)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double green = [&]() {
+                    if (i == 1)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 0)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double blue = [&]() {
+                    if (i == 2)
+                        return static_cast<double>(sampleNum - j) / sampleNum;
+                    if (i == 1)
+                        return static_cast<double>(j) / sampleNum;
+                    return 0.0;
+                }();
+                const double rgb[3] = {red, green, blue};
+                cmsCIEXYZ bufXYZ;
+                cmsCIExyY bufxyY;
+                cmsDoTransform(imgtoxyz, &rgb, &bufXYZ, 1);
+                cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+                const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+                d->m_outerGamut.append(output);
+            }
         }
     }
 
