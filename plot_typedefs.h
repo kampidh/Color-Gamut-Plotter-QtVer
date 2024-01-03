@@ -2,6 +2,7 @@
 #define PLOT_TYPEDEFS_H
 
 #include <QVector3D>
+#include <QColor>
 
 typedef struct {
     double X;
