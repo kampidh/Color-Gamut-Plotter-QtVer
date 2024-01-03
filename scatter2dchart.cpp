@@ -82,8 +82,6 @@ public:
     QImage m_ScatterPixmap;
     QImage m_ScatterTempPixmap;
     QVector<ImageXYZDouble> m_dOutGamut;
-    QVector<QVector2D> m_blackbodyLocus;
-    QVector<QVector2D> m_daylightLocus;
     QVector3D m_dWhitePoint;
     int m_particleSize{0};
     int m_particleSizeStored{0};
@@ -317,51 +315,6 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
         d->m_idealThrCount = QThread::idealThreadCount();
     } else {
         d->m_idealThrCount = 1;
-    }
-
-    /*
-     *  Planckian locus approximation
-     *
-     *  References:
-     *  Kang, B., Moon, O., Hong, C., Lee, H., Cho, B., & Kim, Y. (2002). Design of advanced color: Temperature control
-     * system for HDTV applications. Journal of the Korean Physical Society, 41(6), 865-871.
-     */
-    for (int i = 1700; i <= 25000; i += 50) {
-        const double temp = static_cast<float>(i);
-        double x;
-        double y;
-
-        if (i <= 4000) {
-            x = (-0.2661239 * (1.0e+9 / std::pow(temp, 3.0))) - (0.2343589 * (1.0e+6 / std::pow(temp, 2.0))) + (0.8776956 * (1.0e+3 / temp)) + 0.179910;
-        } else {
-            x = (-3.0258469 * (1.0e+9 / std::pow(temp, 3.0))) + (2.1070379 * (1.0e+6 / std::pow(temp, 2.0))) + (0.2226347 * (1.0e+3 / temp)) + 0.240390;
-        }
-
-        if (i <= 2222) {
-            y = (-1.1063814 * std::pow(x, 3.0)) - (1.34811020 * std::pow(x, 2.0)) + (2.18555832 * x) - 0.20219683;
-        } else if (i <= 4000) {
-            y = (-0.9549476 * std::pow(x, 3.0)) - (1.37418593 * std::pow(x, 2.0)) + (2.09137015 * x) - 0.16748867;
-        } else {
-            y = (3.0817580 * std::pow(x, 3.0)) - (5.87338670 * std::pow(x, 2.0)) + (3.75112997 * x) - 0.37001483;
-        }
-
-        d->m_blackbodyLocus.append({static_cast<float>(x), static_cast<float>(y)});
-    }
-
-    for (int i = 4000; i <= 10000; i += 50) {
-        const double temp = static_cast<float>(i);
-        double x;
-        double y;
-
-        if (i <= 7000) {
-            x = 0.244063 + (0.09911 * (1.0e+3 / temp)) + (2.9678 * (1.0e+6 / std::pow(temp, 2.0))) - (4.6070 * (1.0e+9 / std::pow(temp, 3.0)));
-        } else {
-            x = 0.237040 + (0.24748 * (1.0e+3 / temp)) + (1.9018 * (1.0e+6 / std::pow(temp, 2.0))) - (2.0064 * (1.0e+9 / std::pow(temp, 3.0)));
-        }
-
-        y = (-3.000 * std::pow(x, 2.0)) + (2.870 * x) - 0.275;
-
-        d->m_daylightLocus.append({static_cast<float>(x), static_cast<float>(y)});
     }
 
     connect(&d->m_future, &QFutureWatcher<void>::resultReadyAt, this, &Scatter2dChart::drawFutureAt);
@@ -1307,9 +1260,9 @@ void Scatter2dChart::drawBlackbodyLocus()
         return 50;
     }();
 
-    QPainterPath daylight(mapPoint(QPointF(d->m_daylightLocus.at(0).x(), d->m_daylightLocus.at(0).y())));
-    for (int i = 1; i < d->m_daylightLocus.size(); i++) {
-        const QPointF dyPoint = mapPoint(QPointF(d->m_daylightLocus.at(i).x(), d->m_daylightLocus.at(i).y()));
+    QPainterPath daylight(mapPoint(QPointF(Daylight_Locus.at(0).x(), Daylight_Locus.at(0).y())));
+    for (int i = 1; i < Daylight_Locus.size(); i++) {
+        const QPointF dyPoint = mapPoint(QPointF(Daylight_Locus.at(i).x(), Daylight_Locus.at(i).y()));
         daylight.lineTo(dyPoint);
     }
 
@@ -1318,9 +1271,9 @@ void Scatter2dChart::drawBlackbodyLocus()
     d->m_painter.setPen(pnDash);
     d->m_painter.drawPath(daylight);
 
-    QPainterPath blackbody(mapPoint(QPointF(d->m_blackbodyLocus.at(0).x(), d->m_blackbodyLocus.at(0).y())));
-    for (int i = 1; i < d->m_blackbodyLocus.size(); i++) {
-        const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(i).x(), d->m_blackbodyLocus.at(i).y()));
+    QPainterPath blackbody(mapPoint(QPointF(Blackbody_Locus.at(0).x(), Blackbody_Locus.at(0).y())));
+    for (int i = 1; i < Blackbody_Locus.size(); i++) {
+        const QPointF blbPoint = mapPoint(QPointF(Blackbody_Locus.at(i).x(), Blackbody_Locus.at(i).y()));
         blackbody.lineTo(blbPoint);
     }
 
@@ -1340,7 +1293,7 @@ void Scatter2dChart::drawBlackbodyLocus()
         if (majorMarks.contains(i)) {
             d->m_painter.resetTransform();
 
-            const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(ix).x(), d->m_blackbodyLocus.at(ix).y()));
+            const QPointF blbPoint = mapPoint(QPointF(Blackbody_Locus.at(ix).x(), Blackbody_Locus.at(ix).y()));
             d->m_painter.translate(blbPoint);
             d->m_painter.rotate(theta);
             d->m_painter.setPen(pnOuter);
@@ -1362,7 +1315,7 @@ void Scatter2dChart::drawBlackbodyLocus()
 
         if (i % labelIter == 0 && i < 15000 && !majorMarks.contains(i)) {
             d->m_painter.resetTransform();
-            const QPointF blbPoint = mapPoint(QPointF(d->m_blackbodyLocus.at(ix).x(), d->m_blackbodyLocus.at(ix).y()));
+            const QPointF blbPoint = mapPoint(QPointF(Blackbody_Locus.at(ix).x(), Blackbody_Locus.at(ix).y()));
             d->m_painter.translate(blbPoint);
             d->m_painter.rotate(theta);
             if (i % 500 == 0) {
@@ -1399,7 +1352,7 @@ void Scatter2dChart::drawBlackbodyLocus()
         if (i % 1000 == 0) {
             d->m_painter.resetTransform();
 
-            const QPointF blbPoint = mapPoint(QPointF(d->m_daylightLocus.at(ix).x(), d->m_daylightLocus.at(ix).y()));
+            const QPointF blbPoint = mapPoint(QPointF(Daylight_Locus.at(ix).x(), Daylight_Locus.at(ix).y()));
             d->m_painter.translate(blbPoint);
             d->m_painter.rotate(theta);
             d->m_painter.setPen(pnOuter);
@@ -1422,7 +1375,7 @@ void Scatter2dChart::drawBlackbodyLocus()
         } else if (i % 500 == 0 && ratio >= 3.0) {
             d->m_painter.resetTransform();
 
-            const QPointF blbPoint = mapPoint(QPointF(d->m_daylightLocus.at(ix).x(), d->m_daylightLocus.at(ix).y()));
+            const QPointF blbPoint = mapPoint(QPointF(Daylight_Locus.at(ix).x(), Daylight_Locus.at(ix).y()));
             d->m_painter.translate(blbPoint);
             d->m_painter.rotate(theta);
             d->m_painter.setPen(pnOuter);

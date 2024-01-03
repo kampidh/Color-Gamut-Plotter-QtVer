@@ -1,10 +1,12 @@
 #ifndef CONSTANT_DATASET_H
 #define CONSTANT_DATASET_H
 
+#include <QVector2D>
+
 /*
  * Spectral chromaticity constant, referenced from Krita's Tongue Widget
  */
-static const double spectral_chromaticity[81][2] = {
+static constexpr double spectral_chromaticity[81][2] = {
     {0.1741, 0.0050}, // 380 nm
     {0.1740, 0.0050}, {0.1738, 0.0049}, {0.1736, 0.0049}, {0.1733, 0.0048}, {0.1730, 0.0048}, {0.1726, 0.0048},
     {0.1721, 0.0048}, {0.1714, 0.0051}, {0.1703, 0.0058}, {0.1689, 0.0069}, {0.1669, 0.0086}, {0.1644, 0.0109},
@@ -64,7 +66,7 @@ References
 ----------
 :cite:`Wyszecki2000`, :cite:`Macadam1942`
 */
-static const double MacAdam_ellipses[25][8] = {
+static constexpr double MacAdam_ellipses[25][8] = {
     {0.160, 0.057, 0.85, 0.35, 62.5, 0.94, 0.30, 62.3},
     {0.187, 0.118, 2.20, 0.55, 77.0, 2.31, 0.44, 74.8},
     {0.253, 0.125, 2.50, 0.50, 55.5, 2.49, 0.49, 54.8},
@@ -102,7 +104,7 @@ static const double MacAdam_ellipses[25][8] = {
  *
  * Using illuminant C
  */
-static const double Macbeth_chart_1976[24][3] = {
+static constexpr double Macbeth_chart_1976[24][3] = {
     // Natural colors
     {0.4002, 0.3504, 0.1005},
     {0.3773, 0.3446, 0.3582},
@@ -142,7 +144,7 @@ static const double Macbeth_chart_1976[24][3] = {
  * ColorChecker Classic data from GretagMacbeth (2005)
  * Using illuminant D50
  */
-static const double Macbeth_chart_2005[24][3] = {
+static constexpr double Macbeth_chart_2005[24][3] = {
     // Natural colors
     {0.4316, 0.3777, 0.1008},
     {0.4197, 0.3744, 0.3495},
@@ -184,7 +186,7 @@ static const double Macbeth_chart_2005[24][3] = {
  *
  * In Lab D50
  */
-static const double ColorChecker_After_Nov2014_Lab[24][3] = {
+static constexpr double ColorChecker_After_Nov2014_Lab[24][3] = {
     // Natural colors
     {37.54, 14.37, 14.92},
     {64.66, 19.27, 17.5},
@@ -217,5 +219,8 @@ static const double ColorChecker_After_Nov2014_Lab[24][3] = {
     {35.63, -0.46, -0.48},
     {20.64, 0.07, -0.46},
 };
+
+extern QVector<QVector2D> Blackbody_Locus;
+extern QVector<QVector2D> Daylight_Locus;
 
 #endif // CONSTANT_DATASET_H
