@@ -18,9 +18,12 @@
 #include <QApplication>
 #include <QDebug>
 
-// using namespace QtDataVisualization;
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+using namespace QtDataVisualization;
+#endif
 
 #include <QCheckBox>
+#include <QColorSpace>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QIODevice>
@@ -33,6 +36,9 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <QKeyEvent>
+#include <QCloseEvent>
+
 #include <cstring>
 
 class Q_DECL_HIDDEN ScatterDialog::Private
@@ -44,7 +50,7 @@ public:
     QVector3D m_wtpt;
     int m_plotType{0};
     int m_plotDensity{0};
-    Q3DScatter *m_graph;
+    // Q3DScatter *m_graph;
     QWidget *m_container;
     Scatter3dChart *m_3dScatter;
     Scatter2dChart *m_2dScatter;
@@ -229,7 +235,11 @@ void ScatterDialog::savePlotImage()
     const QString tmpFileName = QFileDialog::getSaveFileName(this,
                                                              tr("Save plot as image"),
                                                              infoDir,
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
                                                              tr("Portable Network Graphics (*.png)"));
+#else
+                                                             tr("Portable Network Graphics (*.png);;TIFF image (*.tif)"));
+#endif
     if (tmpFileName.isEmpty()) {
         return;
     }
@@ -252,6 +262,15 @@ void ScatterDialog::savePlotImage()
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
             out = *d->m_2dScatter->getFullPixmap();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+            if (tmpFileName.endsWith(".tif")) {
+                out.convertTo(QImage::Format_RGBA32FPx4);
+                out.convertToColorSpace(QColorSpace::SRgbLinear);
+            } else if (tmpFileName.endsWith(".png")) {
+                out.convertTo(QImage::Format_RGBA64);
+                out.convertToColorSpace(QColorSpace::SRgb);
+            }
+#endif
         }
     }
 
@@ -286,12 +305,20 @@ void ScatterDialog::keyPressEvent(QKeyEvent *event)
             d->m_lastSize = size();
             d->m_isFullscreen = true;
             guiGroup->setVisible(false);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
             layout()->setMargin(0);
+#else
+            layout()->setContentsMargins(0, 0, 0, 0);
+#endif
             setWindowState(Qt::WindowFullScreen);
         } else {
             d->m_isFullscreen = false;
             setWindowState(Qt::WindowNoState);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
             layout()->setMargin(9);
+#else
+            layout()->setContentsMargins(9, 9, 9, 9);
+#endif
             guiGroup->setVisible(true);
             resize(d->m_lastSize);
         }

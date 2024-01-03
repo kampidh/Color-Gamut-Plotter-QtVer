@@ -40,6 +40,14 @@
 #include "constant_dataset.h"
 #include "scatter2dchart.h"
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+    static const QImage::Format fmtFor8bit = QImage::Format_ARGB32;
+    static const QImage::Format fmtFor16bit = QImage::Format_RGBA64_Premultiplied;
+#else
+    static const QImage::Format fmtFor8bit = QImage::Format_ARGB32;
+    static const QImage::Format fmtFor16bit = QImage::Format_RGBA16FPx4_Premultiplied;
+#endif
+
 // adaptive downsampling params, hardcoded
 static const int adaptiveIterMaxPixels = 50000;
 static const int adaptiveIterMaxRenderedPoints = 25000;
@@ -177,9 +185,14 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
 
     // reserved soon
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
     d->m_scProfile = QColorSpace::SRgb;
     d->m_imageSpace = QColorSpace::SRgb;
-    d->m_imageFormat = QImage::Format_ARGB32;
+#else
+    d->m_scProfile = QColorSpace::SRgb;
+    d->m_imageSpace = QColorSpace::SRgb;
+#endif
+    d->m_imageFormat = fmtFor8bit;
 
     d->m_labelFont = QFont("Courier New", 11, QFont::Medium);
     d->m_bgColor = QColor(16,16,16,255);
@@ -398,7 +411,7 @@ void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
     d->forceBucketRendering->setChecked(d->enableForceBucketRendering);
 
     if (d->enable16Bit) {
-        d->m_imageFormat = QImage::Format_RGBA64;
+        d->m_imageFormat = fmtFor16bit;
     }
 
     d->isSettingOverride = true;
@@ -557,7 +570,9 @@ void Scatter2dChart::drawDataPoints()
         }
 
         if (!d->isDownscaled && d->enableAA) {
-            tempPainterMap.setRenderHint(QPainter::Antialiasing);
+            tempPainterMap.setRenderHint(QPainter::Antialiasing, true);
+        } else {
+            tempPainterMap.setRenderHint(QPainter::Antialiasing, false);
         }
         tempPainterMap.setPen(Qt::NoPen);
         tempPainterMap.setCompositionMode(QPainter::CompositionMode_Lighten);
@@ -582,18 +597,28 @@ void Scatter2dChart::drawDataPoints()
 
             const QColor col = [&]() {
                 // How do you initiate QColor directly to extended rgb...
-                QColor temp;
-                QColor temp2 = temp.toExtendedRgb();
+                // QColor temp;
+                // QColor temp2 = temp.toExtendedRgb();
+                // Oh it seems to be automagically assign to extended rgb
+
+                QColor temp2;
                 if (d->isDownscaled) {
                     temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, 0.5);
-                    return temp2;
+                } else {
+                    temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity);
                 }
-                temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity);
+
+                // Clamp to sRGB if not 16bit
+                if (!d->enable16Bit) {
+                    temp2 = temp2.toRgb();
+                }
                 return temp2;
             }();
 
             tempPainterMap.setBrush(col);
 
+            // Performance heavy in here.
+            // On Qt6+ there's almost no difference in speed when AA is on or off and when QImage is 8 bit or 16 bit..
             if (d->enableAA && !d->isDownscaled) {
                 tempPainterMap.drawEllipse(mapped, d->m_particleSize / 2.0, d->m_particleSize / 2.0);
             } else {
@@ -850,7 +875,7 @@ void Scatter2dChart::drawDataPoints()
             fragmentedColPoints.clear();
             fragmentedColPoints.squeeze();
         }
-        if (!fragmentedColPoints.isEmpty() && d->m_drawnParticles > 0) {
+        if ((!fragmentedColPoints.isEmpty() && d->m_drawnParticles > 0) || !d->useBucketRender) {
             d->m_lastDrawnParticles = d->m_drawnParticles;
         }
         d->m_renderTimer.start();
@@ -2130,10 +2155,10 @@ void Scatter2dChart::changeProperties()
 
     if (d->use16Bit->isChecked()) {
         d->enable16Bit = true;
-        d->m_imageFormat = QImage::Format_RGBA64;
+        d->m_imageFormat = fmtFor16bit;
     } else if (!d->use16Bit->isChecked()) {
         d->enable16Bit = false;
-        d->m_imageFormat = QImage::Format_ARGB32;
+        d->m_imageFormat = fmtFor8bit;
     }
 
     drawDownscaled(20);

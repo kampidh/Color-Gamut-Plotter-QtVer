@@ -15,7 +15,9 @@
 
 #include "plot_typedefs.h"
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
 using namespace QtDataVisualization;
+#endif
 
 class Scatter3dChart : public Q3DScatter
 {

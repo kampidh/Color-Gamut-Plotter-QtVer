@@ -29,7 +29,9 @@
 
 #include <lcms2.h>
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
 using namespace QtDataVisualization;
+#endif
 
 class Q_DECL_HIDDEN Scatter3dChart::Private
 {
