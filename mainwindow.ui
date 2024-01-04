@@ -124,7 +124,7 @@
           </item>
           <item>
            <property name="text">
-            <string>Ultra (Slowest, only for 3D Mono and 2D)</string>
+            <string>Ultra (Slowest, eat lots of VRAM on 3D Color)</string>
            </property>
           </item>
          </widget>

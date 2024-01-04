@@ -20,8 +20,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 #include <lcms2.h>
+
+inline float lerp(float a, float b, float f)
+{
+    return a * (1.0 - f) + (b * f);
+}
 
 template<typename T, typename std::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 1>
 inline double value(const T src)
@@ -557,19 +563,38 @@ void ImageParserSC::calculateFromFloat(QVector<QVector3D> &imgData,
     }
 
     if (d->hasColorants) {
-        cmsCIExyY bufxyY;
+        cmsCIExyY bufR;
+        cmsCIExyY bufG;
+        cmsCIExyY bufB;
 
+        cmsXYZ2xyY(&bufR, &d->colorants.Red);
+        cmsXYZ2xyY(&bufG, &d->colorants.Green);
+        cmsXYZ2xyY(&bufB, &d->colorants.Blue);
+
+        const int sampleNum = 100;
         for (int i = 0; i < 3; i++) {
-            const cmsCIEXYZ bufXYZ = [&]() {
-                if (i == 0) return d->colorants.Red;
-                if (i == 1) return d->colorants.Green;
-                if (i == 2) return d->colorants.Blue;
-                return cmsCIEXYZ{};
-            }();
-            cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
-            d->m_outerGamut.append(output);
+            cmsCIExyY pointA;
+            cmsCIExyY pointB;
+            if (i == 0) {
+                pointA = bufR;
+                pointB = bufG;
+                d->m_outerGamut.append(ImageXYZDouble{bufR.x, bufR.y, bufR.Y});
+            } else if (i == 1) {
+                pointA = bufG;
+                pointB = bufB;
+                d->m_outerGamut.append(ImageXYZDouble{bufG.x, bufG.y, bufG.Y});
+            } else if (i == 2) {
+                pointA = bufB;
+                pointB = bufR;
+                d->m_outerGamut.append(ImageXYZDouble{bufB.x, bufB.y, bufB.Y});
+            }
+            for (int j = 1; j < sampleNum; j++) {
+                const float frac = (float)j / (float)sampleNum;
+                const float fX = lerp(pointA.x, pointB.x, frac);
+                const float fY = lerp(pointA.y, pointB.y, frac);
+                const float fYY = lerp(pointA.Y, pointB.Y, frac);
+                d->m_outerGamut.append(ImageXYZDouble{fX, fY, fYY});
+            }
         }
     } else {
         const int sampleNum = 100;
@@ -709,19 +734,38 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
     }
 
     if (d->hasColorants) {
-        cmsCIExyY bufxyY;
+        cmsCIExyY bufR;
+        cmsCIExyY bufG;
+        cmsCIExyY bufB;
 
+        cmsXYZ2xyY(&bufR, &d->colorants.Red);
+        cmsXYZ2xyY(&bufG, &d->colorants.Green);
+        cmsXYZ2xyY(&bufB, &d->colorants.Blue);
+
+        const int sampleNum = 100;
         for (int i = 0; i < 3; i++) {
-            const cmsCIEXYZ bufXYZ = [&]() {
-                if (i == 0) return d->colorants.Red;
-                if (i == 1) return d->colorants.Green;
-                if (i == 2) return d->colorants.Blue;
-                return cmsCIEXYZ{};
-            }();
-            cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
-            d->m_outerGamut.append(output);
+            cmsCIExyY pointA;
+            cmsCIExyY pointB;
+            if (i == 0) {
+                pointA = bufR;
+                pointB = bufG;
+                d->m_outerGamut.append(ImageXYZDouble{bufR.x, bufR.y, bufR.Y});
+            } else if (i == 1) {
+                pointA = bufG;
+                pointB = bufB;
+                d->m_outerGamut.append(ImageXYZDouble{bufG.x, bufG.y, bufG.Y});
+            } else if (i == 2) {
+                pointA = bufB;
+                pointB = bufR;
+                d->m_outerGamut.append(ImageXYZDouble{bufB.x, bufB.y, bufB.Y});
+            }
+            for (int j = 1; j < sampleNum; j++) {
+                const float frac = (float)j / (float)sampleNum;
+                const float fX = lerp(pointA.x, pointB.x, frac);
+                const float fY = lerp(pointA.y, pointB.y, frac);
+                const float fYY = lerp(pointA.Y, pointB.Y, frac);
+                d->m_outerGamut.append(ImageXYZDouble{fX, fY, fYY});
+            }
         }
     } else {
         const int sampleNum = 100;
@@ -775,6 +819,87 @@ void ImageParserSC::calculateFromRaw(QVector<const quint8 *> &dataPointers,
         }
         return true;
     }();
+}
+
+void ImageParserSC::trimImage(quint64 size)
+{
+    if (!d->m_outCp) return;
+
+    qDebug() << "Size before:" << d->m_outCp->size();
+
+    std::set<ColorPoint> imm;
+
+    QProgressDialog pDial;
+    pDial.setMinimum(0);
+    pDial.setMaximum(d->m_outCp->size());
+    pDial.setLabelText("Trimming image...");
+    pDial.setCancelButtonText("Stop");
+
+    pDial.show();
+
+    quint64 it = 0;
+
+    for (quint64 i = 0; i < d->m_outCp->size(); i++) {
+        imm.insert(d->m_outCp->at(i));
+        it++;
+        if (it % 50000 == 0) {
+            if (pDial.wasCanceled()) break;
+            pDial.setValue(it);
+            QGuiApplication::processEvents();
+        }
+    }
+
+    pDial.close();
+
+    d->m_outCp->clear();
+
+    const auto iterSize = [&]() {
+        if (size == 0) return (quint64)1;
+        return std::max(imm.size() / size, (quint64)1);
+    }();
+
+    it = 0;
+
+    for (const auto &cp: imm) {
+        it++;
+        if (it == iterSize || size == 0) {
+            it = 0;
+            d->m_outCp->append(cp);
+        }
+    }
+
+    if (d->m_outCp->size() > size && size != 0) {
+        pDial.reset();
+        pDial.setMinimum(0);
+        pDial.setMaximum(d->m_outCp->size() - size);
+        pDial.setLabelText("Trimming image (2nd pass)...");
+        pDial.setCancelButtonText("Stop");
+
+        pDial.show();
+
+        it = 0;
+
+        while (d->m_outCp->size() > size) {
+            quint64 indx = QRandomGenerator::global()->bounded(d->m_outCp->size() - 1);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+            d->m_outCp->erase(d->m_outCp->begin() + indx);
+#else
+            d->m_outCp->erase(d->m_outCp->constBegin() + indx);
+#endif
+            if (it % 1000 == 0) {
+                if (pDial.wasCanceled()) break;
+                pDial.setValue(it);
+                QGuiApplication::processEvents();
+            }
+            it++;
+        }
+
+        pDial.close();
+
+        d->m_outCp->squeeze();
+    }
+
+    qDebug() << "Size after:" << d->m_outCp->size();
 }
 
 QString ImageParserSC::getProfileName()

@@ -166,6 +166,19 @@ bool ScatterDialog::startParse()
     }
 
     if (!d->m_is2d) {
+        if (d->m_plotType == 0) {
+            d->parsedImg.trimImage(100000);
+        } else if (d->m_plotType == 1) {
+            if (d->m_plotDensity >= 2000) {
+                d->parsedImg.trimImage(20000);
+            } else if (d->m_plotDensity >= 500) {
+                d->parsedImg.trimImage(10000);
+            } else {
+                d->parsedImg.trimImage(2000);
+            }
+        } else {
+            d->parsedImg.trimImage(1000);
+        }
         const bool isSrgb = d->parsedImg.isMatchSrgb();
         d->m_3dScatter = new Scatter3dChart();
         d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);

@@ -129,11 +129,11 @@ void MainWindow::goPlot()
                 return 200;
                 break;
             case 1:
-                return 500;
+                return 1000;
                 break;
             case 2:
             default:
-                return 1000;
+                return 5000;
                 break;
             }
             break;
@@ -141,11 +141,14 @@ void MainWindow::goPlot()
         case 1:
             switch (plotDensNdx) {
             case 0:
-                return 50;
+                return 100;
                 break;
             case 1:
+                return 500;
+                break;
+            case 2:
             default:
-                return 100;
+                return 2000;
                 break;
             }
             break;

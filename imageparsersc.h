@@ -28,6 +28,7 @@ public:
     QVector<ImageXYZDouble> *getOuterGamut() const;
     QVector<QColor> *getQColorArray() const;
     QByteArray *getRawICC() const;
+    void trimImage(quint64 size = 0);
 
     bool isMatchSrgb();
 
