@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>403</width>
-    <height>951</height>
+    <width>396</width>
+    <height>936</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -18,21 +18,21 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>403</width>
-    <height>545</height>
+    <width>0</width>
+    <height>0</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
-    <width>600</width>
-    <height>16777215</height>
+    <width>1000</width>
+    <height>2000</height>
    </size>
   </property>
   <property name="windowTitle">
    <string>Qt CIE1931 Gamut Plotter</string>
   </property>
   <property name="toolTip">
-   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;In some cases, bucket rendering can reduce memory usage compared to progressive rendering.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+   <string/>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_4">
@@ -193,33 +193,10 @@
             <string>Show overlays</string>
            </property>
            <layout class="QGridLayout" name="gridLayout">
-            <item row="0" column="0">
-             <widget class="QCheckBox" name="showStatChk">
+            <item row="2" column="1">
+             <widget class="QCheckBox" name="showBlBodyLocChk">
               <property name="text">
-               <string>Statistics</string>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QCheckBox" name="showMacAdamECHk">
-              <property name="toolTip">
-               <string>Draw in both normal, and 10x size as depicted in MacAdam's paper.</string>
-              </property>
-              <property name="text">
-               <string>MacAdam ellipses</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QCheckBox" name="showGridsChk">
-              <property name="text">
-               <string>Grids and spectral line</string>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
+               <string>BB and Daylight locus</string>
               </property>
              </widget>
             </item>
@@ -243,6 +220,16 @@
               </property>
              </widget>
             </item>
+            <item row="1" column="0">
+             <widget class="QCheckBox" name="showGridsChk">
+              <property name="text">
+               <string>Grids and spectral line</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
             <item row="3" column="0">
              <widget class="QCheckBox" name="showImgGamutChk">
               <property name="text">
@@ -253,10 +240,23 @@
               </property>
              </widget>
             </item>
-            <item row="2" column="1">
-             <widget class="QCheckBox" name="showBlBodyLocChk">
+            <item row="0" column="0">
+             <widget class="QCheckBox" name="showStatChk">
               <property name="text">
-               <string>BB and Daylight locus</string>
+               <string>Statistics</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QCheckBox" name="showMacAdamECHk">
+              <property name="toolTip">
+               <string>Draw in both normal, and 10x size as depicted in MacAdam's paper.</string>
+              </property>
+              <property name="text">
+               <string>MacAdam ellipses</string>
               </property>
              </widget>
             </item>
@@ -430,7 +430,7 @@
      </spacer>
     </item>
     <item>
-     <widget class="QLabel" name="label_5">
+     <widget class="QLabel" name="lblFooter">
       <property name="text">
        <string>- Kampidh 2023 -</string>
       </property>

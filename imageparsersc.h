@@ -33,11 +33,6 @@ public:
     bool isMatchSrgb();
 
 private:
-    void calculateFromFloat(QVector<QVector3D> &imgData,
-                            const cmsHTRANSFORM &srgbtoxyz,
-                            const cmsHTRANSFORM &imgtoxyz,
-                            const cmsHTRANSFORM &xyztosrgb);
-
     template<typename T>
     void calculateFromRaw(QVector<const quint8 *> &dataPointers,
                           const cmsHTRANSFORM &srgbtoxyz,

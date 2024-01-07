@@ -2,7 +2,7 @@
 #define PLOT_TYPEDEFS_H
 
 #include <QVector3D>
-#include <QColor>
+#include <cmath>
 
 typedef struct IXYZDouble {
     double X;
@@ -10,13 +10,16 @@ typedef struct IXYZDouble {
     double Z;
 
     friend bool operator<(const IXYZDouble &lhs, const IXYZDouble &rhs) {
-        const double in =
-            // std::pow(lhs.X, 2) + std::pow(lhs.Y, 3) * std::pow(2, lhs.X) + std::pow(lhs.Z, 4) * std::pow(3, lhs.Y);
-            lhs.X + (2 * lhs.Y) + (3 * lhs.Z);
-        const double out =
-            // std::pow(rhs.X, 2) + std::pow(rhs.Y, 3) * std::pow(2, rhs.X) + std::pow(rhs.Z, 4) * std::pow(3, rhs.Y);
-            rhs.X + (2 * rhs.Y) + (3 * rhs.Z);
+        const double in = lhs.X + (2 * lhs.Y) + (3 * lhs.Z);
+        const double out = rhs.X + (2 * rhs.Y) + (3 * rhs.Z);
+        if (std::isnan(in) || std::isnan(out)) return false;
         return in < out;
+    }
+    friend bool operator==(const IXYZDouble &lhs, const IXYZDouble &rhs) {
+        const double in = lhs.X + (2 * lhs.Y) + (3 * lhs.Z);
+        const double out = rhs.X + (2 * rhs.Y) + (3 * rhs.Z);
+        if (std::isnan(in) && std::isnan(out)) return true;
+        return in == out;
     }
     inline bool operator>(IXYZDouble &rhs) { return rhs < *this; }
     inline bool operator<=(IXYZDouble &rhs) { return !(*this > rhs); }
@@ -27,15 +30,20 @@ typedef struct IRGBFloat {
     float R;
     float G;
     float B;
+    mutable quint32 N = 1;
+    mutable float A = 0.0;
 
     friend bool operator<(const IRGBFloat &lhs, const IRGBFloat &rhs) {
-        const double in =
-            // std::pow(lhs.R, 2) + std::pow(lhs.G, 3) * std::pow(2, lhs.R) + std::pow(lhs.B, 4) * std::pow(3, lhs.G);
-            lhs.R + (2 * lhs.G) + (3 * lhs.B);
-        const double out =
-            // std::pow(rhs.R, 2) + std::pow(rhs.G, 3) * std::pow(2, rhs.R) + std::pow(rhs.B, 4) * std::pow(3, rhs.G);
-            lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        const double in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        const double out = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        if (std::isnan(in) || std::isnan(out)) return false;
         return in < out;
+    }
+    friend bool operator==(const IRGBFloat &lhs, const IRGBFloat &rhs) {
+        const double in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        const double out = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        if (std::isnan(in) && std::isnan(out)) return true;
+        return in == out;
     }
     inline bool operator>(IRGBFloat &rhs) { return rhs < *this; }
     inline bool operator<=(IRGBFloat &rhs) { return !(*this > rhs); }
@@ -43,8 +51,22 @@ typedef struct IRGBFloat {
 } ImageRGBFloat;
 
 typedef QPair<ImageXYZDouble, ImageRGBFloat> ColorPoint;
-typedef QMap<ImageXYZDouble, ImageRGBFloat> ColorPointMap;
-typedef QPair<QPointF, QColor> ColorPointMapped; // this one is unused
+
+template<>
+struct std::hash<ColorPoint>
+{
+    inline size_t operator()(const ColorPoint &lhs) const noexcept
+    {
+        double in = lhs.first.X + (2 * lhs.first.Y) + (3 * lhs.first.Z);
+        if (std::isnan(in)) return 0;
+        /*
+         *    "You like playing it unsafe"
+         *             "Do you?"
+         *
+         */
+        return static_cast<size_t>(*reinterpret_cast<uint64_t *>(&in));
+    }
+};
 
 typedef struct {
     bool enableAA;

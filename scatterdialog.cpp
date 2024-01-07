@@ -31,6 +31,7 @@ using namespace QtDataVisualization;
 #include <QMessageBox>
 #include <QPaintDevice>
 #include <QPainter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QScreen>
 #include <QVBoxLayout>
@@ -111,13 +112,23 @@ bool ScatterDialog::startParse()
 #ifdef HAVE_JPEGXL
     QFileInfo fi(d->m_fName);
     if (fi.suffix() == "jxl") {
+        QProgressDialog pDial;
+        pDial.setRange(0, 0);
+        pDial.setLabelText("Opening image...");
+        pDial.setModal(true);
+
+        pDial.show();
+        QGuiApplication::processEvents();
+
         JxlReader jxlfile(d->m_fName);
         QMessageBox msg;
         if (!jxlfile.processJxl()) {
             QMessageBox msg;
             msg.warning(this, "Warning", "Failed to open JXL file!");
+            pDial.close();
             return false;
         }
+        pDial.close();
         d->parsedImg.inputFile(jxlfile.getRawImage(),
                               jxlfile.getRawICC(),
                               jxlfile.getImageColorDepth(),
@@ -125,12 +136,22 @@ bool ScatterDialog::startParse()
                               d->m_plotDensity,
                               &d->inputImg);
     } else {
+        QProgressDialog pDial;
+        pDial.setRange(0, 0);
+        pDial.setLabelText("Opening image...");
+        pDial.setModal(true);
+
+        pDial.show();
+        QGuiApplication::processEvents();
+
         const QImage imgs(d->m_fName);
         if (imgs.isNull()) {
             QMessageBox msg;
             msg.warning(this, "Warning", "Invalid or unsupported image format!");
+            pDial.close();
             return false;
         }
+        pDial.close();
         d->parsedImg.inputFile(imgs, d->m_plotDensity, &d->inputImg);
     }
 #else
@@ -152,7 +173,8 @@ bool ScatterDialog::startParse()
     d->m_wtpt = d->parsedImg.getWhitePointXYY();
 
     if (d->m_is2d) {
-        d->m_2dScatter = new Scatter2dChart();
+        d->parsedImg.trimImage();
+        d->m_2dScatter = new Scatter2dChart(layout()->widget());
         if (d->m_overrideSettings) {
             d->m_2dScatter->overrideSettings(d->m_plotSetting);
         }
@@ -167,7 +189,13 @@ bool ScatterDialog::startParse()
 
     if (!d->m_is2d) {
         if (d->m_plotType == 0) {
-            d->parsedImg.trimImage(100000);
+            if (d->m_plotDensity >= 5000) {
+                d->parsedImg.trimImage(200000);
+            } else if (d->m_plotDensity >= 1000) {
+                d->parsedImg.trimImage(100000);
+            } else {
+                d->parsedImg.trimImage(50000);
+            }
         } else if (d->m_plotType == 1) {
             if (d->m_plotDensity >= 2000) {
                 d->parsedImg.trimImage(20000);
@@ -180,7 +208,7 @@ bool ScatterDialog::startParse()
             d->parsedImg.trimImage(1000);
         }
         const bool isSrgb = d->parsedImg.isMatchSrgb();
-        d->m_3dScatter = new Scatter3dChart();
+        d->m_3dScatter = new Scatter3dChart(nullptr, windowHandle());
         d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);
         layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
 

@@ -37,6 +37,7 @@ class Q_DECL_HIDDEN Scatter3dChart::Private
 {
 public:
     // unused, reserved
+    float m_particleSize = 0.01;
 };
 
 Scatter3dChart::Scatter3dChart(const QSurfaceFormat *format, QWindow *parent)
@@ -95,36 +96,37 @@ void Scatter3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZ
         }
     }
 
-    QProgressDialog *pDial = new QProgressDialog();
-    pDial->setMinimum(0);
-    pDial->setMaximum(dArray.size());
-    pDial->setLabelText("Plotting...");
-    pDial->setCancelButtonText("Stop");
+    QProgressDialog pDial;
+    pDial.setModal(true);
+    pDial.setMinimum(0);
+    pDial.setMaximum(dArray.size());
+    pDial.setLabelText("Plotting...");
+    pDial.setCancelButtonText("Stop");
 
-    pDial->show();
+    pDial.show();
 
     // Input main data
     {
         // No need to call data proxy I guess..
         // QScatterDataProxy *proxy = new QScatterDataProxy;
-        QScatter3DSeries *series = new QScatter3DSeries();
+        QScatter3DSeries *series = new QScatter3DSeries(this);
         series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
         series->setMesh(QAbstract3DSeries::MeshPoint);
         series->setMeshSmooth(false);
-        series->setItemSize(0.05);
+        series->setItemSize(d->m_particleSize);
         series->setBaseColor(Qt::yellow);
         uint32_t progress = 0;
         uint32_t progDivider = dArray.size() / 10;
         for (uint32_t i = 0; i < dArray.size(); i++) {
             if (type > 0) {
-                inputRGBDataVec(dArray[i].first, dArray[i].second, 0.05, false);
+                inputRGBDataVec(dArray[i].first, dArray[i].second, d->m_particleSize, false);
             } else {
                 inputMonoDataVec(dArray[i].first, series, false);
             }
             progress++;
             if (progress % progDivider == 0) {
-                pDial->setValue(progress);
-                if (pDial->wasCanceled()) {
+                pDial.setValue(progress);
+                if (pDial.wasCanceled()) {
                     break;
                 }
                 QApplication::processEvents();
@@ -135,8 +137,10 @@ void Scatter3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZ
         } else {
             addSeries(series);
         }
-        pDial->setValue(progress);
+        pDial.setValue(progress);
     }
+
+    pDial.close();
 
     // Draw sRGB gamut triangle
     if (!isSrgb) {
@@ -206,7 +210,7 @@ void Scatter3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector<ImageXYZ
 
 void Scatter3dChart::inputRGBDataVec(ImageXYZDouble &xyy, ImageRGBFloat col, float size, bool flatten)
 {
-    QScatter3DSeries *series = new QScatter3DSeries();
+    QScatter3DSeries *series = new QScatter3DSeries(this);
     series->setItemLabelFormat(QStringLiteral("@xTitle: @xLabel @zTitle: @zLabel @yTitle: @yLabel"));
     series->setMesh(QAbstract3DSeries::MeshPoint);
     series->setMeshSmooth(false);

@@ -77,6 +77,7 @@ public:
     bool isCancelFired{false};
     bool isSettingOverride{false};
     bool isBucketReady{false};
+    bool isTrimmed{false};
     QPainter m_painter;
     QImage m_pixmap;
     QImage m_ScatterPixmap;
@@ -383,13 +384,20 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
     d->m_cPoints = &dArray;
 
     std::vector<double> minMaxY;
+    quint32 maxOccurence = 1;
     for (int i = 0; i < d->m_cPoints->size(); i++) {
+        if (maxOccurence < d->m_cPoints->at(i).second.N) {
+            maxOccurence = d->m_cPoints->at(i).second.N;
+        }
         minMaxY.emplace_back(d->m_cPoints->at(i).first.Z);
     }
     const double min = *std::min_element(minMaxY.cbegin(), minMaxY.cend());
     const double max = *std::max_element(minMaxY.cbegin(), minMaxY.cend());
     d->m_minY = min;
     d->m_maxY = max;
+    if (maxOccurence > 1) {
+        d->isTrimmed = true;
+    }
 
     if (d->m_cPoints->size() > adaptiveIterMaxPixels) {
         d->adaptiveIterVal = d->m_cPoints->size() / adaptiveIterMaxPixels;
@@ -400,7 +408,11 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
     if (!d->isSettingOverride) {
         d->m_particleSize = size;
         d->m_particleSizeStored = size;
-        d->m_pointOpacity = alphaLerpToGamma;
+        if (d->isTrimmed) {
+            d->m_pointOpacity = 0.1;
+        } else {
+            d->m_pointOpacity = alphaLerpToGamma;
+        }
     }
 }
 
@@ -557,6 +569,8 @@ void Scatter2dChart::drawDataPoints()
                 QColor temp2;
                 if (d->isDownscaled) {
                     temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, 0.5);
+                } else if (d->isTrimmed) {
+                    temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, std::max(static_cast<double>(chunk.first.at(i)->second.A), d->m_pointOpacity));
                 } else {
                     temp2.setRgbF(chunk.first.at(i)->second.R, chunk.first.at(i)->second.G, chunk.first.at(i)->second.B, d->m_pointOpacity);
                 }
@@ -1500,7 +1514,7 @@ void Scatter2dChart::drawLabels()
     const RenderBounds rb = getRenderBounds();
     const double maxYrange = rb.maxY - rb.originY;
 
-    const QString legends = QString("Pixels: %4 (total)| %5 (%6)\nCenter: x:%1 | y:%2\nZoom: %3\% (y range: %7)")
+    const QString legends = QString("Unique colors: %4 (total)| %5 (%6)\nCenter: x:%1 | y:%2\nZoom: %3\% (y range: %7)")
                                 .arg(QString::number(centerXY.x(), 'f', 6),
                                      QString::number(centerXY.y(), 'f', 6),
                                      QString::number(d->m_zoomRatio * 100.0, 'f', 2),

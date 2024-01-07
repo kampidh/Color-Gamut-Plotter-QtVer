@@ -22,6 +22,10 @@
 
 #include <QFloat16>
 
+#ifdef HAVE_JPEGXL
+#include <jxl/version.h>
+#endif
+
 class Q_DECL_HIDDEN MainWindow::Private
 {
 public:
@@ -45,7 +49,20 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fnameOpenBtn, &QPushButton::clicked, this, &MainWindow::openFileName);
     connect(plotTypeCmb, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::displayOverrideOpts);
 
-    adjustSize();
+    QString lFooter = QString("Build using Qt ") + QT_VERSION_STR +
+#ifdef HAVE_JPEGXL
+        QString(" | libjxl %1.%2.%3")
+            .arg(QString::number(JPEGXL_MAJOR_VERSION),
+                 QString::number(JPEGXL_MINOR_VERSION),
+                 QString::number(JPEGXL_PATCH_VERSION))
+        +
+#endif
+        "\n" + lblFooter->text();
+    lblFooter->setText(lFooter);
+
+    resize(minimumSizeHint());
+    setMinimumSize(minimumSizeHint());
+    setMaximumSize(minimumSizeHint());
 }
 
 MainWindow::~MainWindow()
@@ -77,9 +94,14 @@ void MainWindow::displayOverrideOpts(int ndx)
         override2dChk->setVisible(false);
     }
 
-    resize({100,100});
+    // it's a bit jarring when resizing...
 
-    adjustSize();
+    // QGuiApplication::processEvents();
+    // resize(minimumSizeHint());
+    // setMinimumSize(minimumSizeHint());
+    // setMaximumSize(minimumSizeHint());
+
+    // adjustSize();
 }
 
 void MainWindow::openFileName()
@@ -157,14 +179,14 @@ void MainWindow::goPlot()
         default:
             switch (plotDensNdx) {
             case 0:
-                return 200;
+                return 800;
                 break;
             case 1:
-                return 1500;
+                return 4000;
                 break;
             case 2:
             default:
-                return 5000;
+                return 10000;
                 break;
             }
             break;
