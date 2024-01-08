@@ -8,6 +8,33 @@
 #include <QFile>
 #include <QIODevice>
 
+template<typename T>
+inline void ImageOutCallback(void *opaque, size_t x, size_t y, size_t num_pixels, const void *pixels)
+{
+    QByteArray *op = static_cast<QByteArray *>(opaque);
+    const char *px = static_cast<const char *>(pixels);
+    const auto *pxf = static_cast<const T *>(pixels);
+
+    const size_t pixelsize = num_pixels * sizeof(T) * 3;
+
+    const QByteArray raw = QByteArray::fromRawData(px, static_cast<qsizetype>(pixelsize));
+
+    op->append(raw);
+}
+
+inline JxlImageOutCallback generateCallbackWithPolicy(const JxlPixelFormat &d)
+{
+    switch (d.data_type) {
+    case JXL_TYPE_FLOAT:
+        return &::ImageOutCallback<float>;
+        break;
+    default:
+        break;
+    }
+    qDebug() << "error, only float is currently supported";
+    return nullptr;
+}
+
 class Q_DECL_HIDDEN JxlReader::Private
 {
 public:
@@ -100,8 +127,10 @@ bool JxlReader::processJxl()
     };
 
     for (;;) {
+        qDebug() << "---";
         JxlDecoderStatus status = JxlDecoderProcessInput(dec.get());
-        qDebug() << status;
+        qDebug() << "status:" << Qt::hex << status;
+
         if (status == JXL_DEC_ERROR) {
             qWarning() << "Decoder error";
             return false;
@@ -132,9 +161,23 @@ bool JxlReader::processJxl()
                      << d->m_info.alpha_exponent_bits;
             qDebug() << "Has animation:" << d->m_info.have_animation << "loops:" << d->m_info.animation.num_loops
                      << "tick:" << d->m_info.animation.tps_numerator << d->m_info.animation.tps_denominator;
-            JxlResizableParallelRunnerSetThreads(
-                runner.get(),
-                JxlResizableParallelRunnerSuggestThreads(d->m_info.xsize, d->m_info.ysize));
+            qDebug() << "Original profile?" << d->m_info.uses_original_profile;
+            qDebug() << "Has preview?" << d->m_info.have_preview << d->m_info.preview.xsize << "x" << d->m_info.preview.ysize;
+
+            /* Here lies the dreaded crash when building libjxl with Qt's MinGW kit..
+             *
+             * Some kind of race condition or something got triggered on multithread
+             * If set the thread to 1, it "often" works.
+             *
+             * In the meantime, my resort is to build it with LLVM's MinGW and throw the libs together.
+             *
+             *
+             * Halp T_T */
+            const uint32_t numtreads = [&]() {
+                return JxlResizableParallelRunnerSuggestThreads(d->m_info.xsize, d->m_info.ysize);
+            }();
+            qDebug() << "Threads set:" << numtreads;
+            JxlResizableParallelRunnerSetThreads(runner.get(), numtreads);
 
             // normally, we call this on Krita to preserve original bitdepth
             /*
@@ -186,15 +229,25 @@ bool JxlReader::processJxl()
             qDebug() << "Basic info get";
         } else if (status == JXL_DEC_COLOR_ENCODING) {
             size_t iccSize = 0;
+
             if (JXL_DEC_SUCCESS
-                != JxlDecoderGetICCProfileSize(dec.get(), nullptr, JXL_COLOR_PROFILE_TARGET_DATA, &iccSize)) {
+                != JxlDecoderGetICCProfileSize(dec.get(),
+#if JPEGXL_NUMERIC_VERSION < JPEGXL_COMPUTE_NUMERIC_VERSION(0, 9, 0)
+                                               nullptr,
+#endif
+                                               JXL_COLOR_PROFILE_TARGET_DATA,
+                                               &iccSize)) {
                 qWarning() << "ICC profile size retrieval failed";
                 return false;
             }
+
             d->m_iccProfile.resize(static_cast<int>(iccSize));
+
             if (JXL_DEC_SUCCESS
                 != JxlDecoderGetColorAsICCProfile(dec.get(),
+#if JPEGXL_NUMERIC_VERSION < JPEGXL_COMPUTE_NUMERIC_VERSION(0, 9, 0)
                                                   nullptr,
+#endif
                                                   JXL_COLOR_PROFILE_TARGET_DATA,
                                                   reinterpret_cast<uint8_t *>(d->m_iccProfile.data()),
                                                   static_cast<size_t>(d->m_iccProfile.size()))) {
@@ -202,6 +255,15 @@ bool JxlReader::processJxl()
             }
             qDebug() << "ICC profile get";
         } else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER) {
+            // callback practice
+            // goes racing with multiple workers... :3
+
+            // const JxlImageOutCallback callback = generateCallbackWithPolicy(d->m_pixelFormat);
+            // if (!callback) return false;
+            // JxlDecoderSetImageOutCallback(dec.get(), &d->m_pixelFormat, callback, &d->m_rawData);
+
+            // normal buffer
+
             size_t rawSize = 0;
             if (JXL_DEC_SUCCESS != JxlDecoderImageOutBufferSize(dec.get(), &d->m_pixelFormat, &rawSize)) {
                 qWarning() << "JxlDecoderImageOutBufferSize failed";
