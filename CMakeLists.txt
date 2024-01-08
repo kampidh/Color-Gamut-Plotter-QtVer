@@ -32,23 +32,23 @@ include(FeatureSummary)
 include(MacroBoolTo01)
 
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
-        mainwindow.ui
-        scatter3dchart.h
-        scatter3dchart.cpp
-        scatterdialog.h
-        scatterdialog.cpp
-        scatterdialog.ui
-        scatter2dchart.h
-        scatter2dchart.cpp
-        imageparsersc.h
-        imageparsersc.cpp
-        imageformats.h
-        constant_dataset.h
-        plot_typedefs.h
-        global_variables.h
+        src/main.cpp
+        src/mainwindow.cpp
+        src/mainwindow.h
+        src/mainwindow.ui
+        src/scatter3dchart.h
+        src/scatter3dchart.cpp
+        src/scatterdialog.h
+        src/scatterdialog.cpp
+        src/scatterdialog.ui
+        src/scatter2dchart.h
+        src/scatter2dchart.cpp
+        src/imageparsersc.h
+        src/imageparsersc.cpp
+        src/imageformats.h
+        src/constant_dataset.h
+        src/plot_typedefs.h
+        src/global_variables.h
 )
 
 # move 3rd party into separate project
@@ -65,11 +65,11 @@ macro_bool_to_01(JPEGXL_FOUND HAVE_JPEGXL)
 
 if (JPEGXL_FOUND)
     list(APPEND PROJECT_SOURCES
-        jxlreader.h
-        jxlreader.cpp)
+        src/jxlreader.h
+        src/jxlreader.cpp)
 endif()
 
-configure_file(gamutplotterconfig.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/gamutplotterconfig.h)
+configure_file(src/gamutplotterconfig.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/gamutplotterconfig.h)
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(gamutplotter
