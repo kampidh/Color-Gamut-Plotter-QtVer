@@ -66,7 +66,9 @@ macro_bool_to_01(JPEGXL_FOUND HAVE_JPEGXL)
 if (JPEGXL_FOUND)
     list(APPEND PROJECT_SOURCES
         src/jxlreader.h
-        src/jxlreader.cpp)
+        src/jxlreader.cpp
+        src/jxlwriter.h
+        src/jxlwriter.cpp)
 endif()
 
 configure_file(src/gamutplotterconfig.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/gamutplotterconfig.h)
@@ -100,7 +102,7 @@ target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Charts)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Concurrent)
 
 set_target_properties(gamutplotter PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
+    MACOSX_BUNDLE_GUI_IDENTIFIER saklistudio.com
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE

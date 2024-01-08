@@ -13,6 +13,7 @@
 
 #ifdef HAVE_JPEGXL
 #include "jxlreader.h"
+#include "jxlwriter.h"
 #endif
 
 #include <QApplication>
@@ -273,14 +274,20 @@ void ScatterDialog::savePlotImage()
     QFileInfo info(d->m_fName);
     QString infoDir = info.absolutePath();
 
-    const QString tmpFileName = QFileDialog::getSaveFileName(this,
-                                                             tr("Save plot as image"),
-                                                             infoDir,
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-                                                             tr("Portable Network Graphics (*.png)"));
-#else
-                                                             tr("Portable Network Graphics (*.png);;TIFF image (*.tif)"));
+    QStringList lfmts;
+
+#ifdef HAVE_JPEGXL
+    lfmts << QString("JPEG XL image (*.jxl)");
 #endif
+    lfmts << QString("PNG image (*.png)");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+    lfmts << QString("TIFF image (*.tif)");
+#endif
+
+    const QString fmts = lfmts.join(";;");
+
+    const QString tmpFileName = QFileDialog::getSaveFileName(this, tr("Save plot as image"), infoDir, fmts);
+
     if (tmpFileName.isEmpty()) {
         return;
     }
@@ -312,6 +319,29 @@ void ScatterDialog::savePlotImage()
                 out.convertToColorSpace(QColorSpace::SRgb);
             }
 #endif
+            if (tmpFileName.endsWith(".jxl")) {
+                switch (out.format()) {
+                case QImage::Format_RGBA8888:
+                case QImage::Format_RGBA8888_Premultiplied:
+                case QImage::Format_ARGB32:
+                case QImage::Format_ARGB32_Premultiplied:
+                case QImage::Format_RGBA64:
+                case QImage::Format_RGBA64_Premultiplied:
+                    out.convertToColorSpace(QColorSpace::SRgb);
+                    break;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+                case QImage::Format_RGBA16FPx4:
+                case QImage::Format_RGBA16FPx4_Premultiplied:
+                case QImage::Format_RGBA32FPx4:
+                case QImage::Format_RGBA32FPx4_Premultiplied:
+                    out.convertToColorSpace(QColorSpace::SRgbLinear);
+                    break;
+#endif
+                default:
+                    out.convertToColorSpace(QColorSpace::SRgb);
+                    break;
+                }
+            }
         }
     }
 
@@ -328,13 +358,27 @@ void ScatterDialog::savePlotImage()
         pn.end();
     }
 
-    if (out.save(tmpFileName)) {
-        QMessageBox msg;
-        msg.setText("Image saved successfully");
-        msg.exec();
+    if (tmpFileName.endsWith(".jxl")) {
+#ifdef HAVE_JPEGXL
+        JxlWriter jxlw;
+        if (jxlw.convert(&out, tmpFileName)) {
+            QMessageBox msg;
+            msg.setText("Image saved successfully");
+            msg.exec();
+        } else {
+            QMessageBox msg;
+            msg.warning(this, "Error", "Image cannot be saved!");
+        }
+#endif
     } else {
-        QMessageBox msg;
-        msg.warning(this, "Error", "Image cannot be saved!");
+        if (out.save(tmpFileName)) {
+            QMessageBox msg;
+            msg.setText("Image saved successfully");
+            msg.exec();
+        } else {
+            QMessageBox msg;
+            msg.warning(this, "Error", "Image cannot be saved!");
+        }
     }
 }
 

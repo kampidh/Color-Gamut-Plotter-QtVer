@@ -21,6 +21,7 @@
 #include <QColorSpace>
 #include <QDebug>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFuture>
 #include <QInputDialog>
 #include <QMenu>
@@ -39,6 +40,12 @@
 
 #include "constant_dataset.h"
 #include "scatter2dchart.h"
+
+#include "./gamutplotterconfig.h"
+
+#ifdef HAVE_JPEGXL
+#include "jxlwriter.h"
+#endif
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
     static const QImage::Format fmtFor8bit = QImage::Format_ARGB32;
@@ -1778,14 +1785,29 @@ void Scatter2dChart::drawDownscaled(int delayms)
 
 void Scatter2dChart::saveSlicesAsImage()
 {
+    QStringList lfmts;
+
+#ifdef HAVE_JPEGXL
+    lfmts << QString("JPEG XL image (*.jxl)");
+#endif
+    lfmts << QString("PNG image (*.png)");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+    lfmts << QString("TIFF image (*.tif)");
+#endif
+
+    const QString fmts = lfmts.join(";;");
+
     const QString tmpFileName = QFileDialog::getSaveFileName(this,
                                                              tr("Save plot as image"),
                                                              "",
-                                                             tr("Portable Network Graphics (*.png)"));
+                                                             fmts);
     if (tmpFileName.isEmpty()) {
         return;
     }
-    QString fileNameTrimmed = tmpFileName.chopped(4);
+    const QString fileNameTrimmed = tmpFileName.chopped(4);
+    const QFileInfo fin(tmpFileName);
+
+    const QString finSuffix = fin.suffix();
 
     bool isNumSlicesOkay;
     const int numSlices = QInputDialog::getInt(this,
@@ -1826,9 +1848,40 @@ void Scatter2dChart::saveSlicesAsImage()
         d->m_slicePos = i;
         doUpdate();
 
-        const QString outputFile = fileNameTrimmed + tr("_") + QString::number(i).rightJustified(4, '0') + tr(".png");
+        const QString outputFile =
+            fileNameTrimmed + tr("_") + QString::number(i).rightJustified(4, '0') + tr(".") + finSuffix;
+
         QImage out(d->m_pixmap);
-        out.save(outputFile);
+        if (finSuffix == "jxl") {
+#ifdef HAVE_JPEGXL
+            switch (out.format()) {
+            case QImage::Format_RGBA8888:
+            case QImage::Format_RGBA8888_Premultiplied:
+            case QImage::Format_ARGB32:
+            case QImage::Format_ARGB32_Premultiplied:
+            case QImage::Format_RGBA64:
+            case QImage::Format_RGBA64_Premultiplied:
+                out.convertToColorSpace(QColorSpace::SRgb);
+                break;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+            case QImage::Format_RGBA16FPx4:
+            case QImage::Format_RGBA16FPx4_Premultiplied:
+            case QImage::Format_RGBA32FPx4:
+            case QImage::Format_RGBA32FPx4_Premultiplied:
+                out.convertToColorSpace(QColorSpace::SRgbLinear);
+                break;
+#endif
+            default:
+                out.convertToColorSpace(QColorSpace::SRgb);
+                break;
+            }
+
+            JxlWriter jxlw;
+            jxlw.convert(&out, outputFile, 1);
+#endif
+        } else {
+            out.save(outputFile, nullptr, 75);
+        }
         pDial.setValue(i);
     }
 
