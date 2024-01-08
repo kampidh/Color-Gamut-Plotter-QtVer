@@ -11,6 +11,7 @@
 #include "qevent.h"
 #include "scatterdialog.h"
 #include "plot_typedefs.h"
+#include "global_variables.h"
 
 //#include <QEvent>
 #include <QDebug>
@@ -25,6 +26,9 @@
 #ifdef HAVE_JPEGXL
 #include <jxl/version.h>
 #endif
+
+bool ClampNegative = false;
+bool ClampPositive = false;
 
 class Q_DECL_HIDDEN MainWindow::Private
 {
@@ -195,6 +199,9 @@ void MainWindow::goPlot()
     }();
 
     d->sc = new ScatterDialog(fileName, plotTypeIndex, plotDensity);
+
+    ClampNegative = chkClampNeg->isChecked();
+    ClampPositive = chkClampPos->isChecked();
 
     if (override2dChk->isChecked() && plotTypeIndex == 2) {
         const PlotSetting2D plotSet{

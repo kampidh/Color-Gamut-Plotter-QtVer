@@ -5,6 +5,8 @@
  **/
 
 #include "imageparsersc.h"
+#include "global_variables.h"
+
 #include <QVector3D>
 
 #include <QDebug>
@@ -33,13 +35,19 @@ inline float lerp(float a, float b, float f)
 template<typename T, typename std::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 1>
 inline double value(const T src)
 {
-    return double(src);
+    double dst = double(src);
+    if (ClampNegative) dst = std::max(0.0, dst);
+    if (ClampPositive) dst = std::min(1.0, dst);
+    return dst;
 }
 
 template<typename T, typename std::enable_if_t<std::numeric_limits<T>::is_integer, int> = 1>
 inline double value(const T src)
 {
-    return (double(src) / double(std::numeric_limits<T>::max()));
+    double dst =  double(std::numeric_limits<T>::max());
+    if (ClampNegative) dst = std::max(0.0, dst);
+    if (ClampPositive) dst = std::min(1.0, dst);
+    return dst;
 }
 
 const static float adaptationState = 0.0;

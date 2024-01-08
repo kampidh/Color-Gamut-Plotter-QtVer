@@ -45,11 +45,10 @@ set(PROJECT_SOURCES
         scatter2dchart.cpp
         imageparsersc.h
         imageparsersc.cpp
-#        jxlreader.h
-#        jxlreader.cpp
         imageformats.h
         constant_dataset.h
         plot_typedefs.h
+        global_variables.h
 )
 
 # move 3rd party into separate project
