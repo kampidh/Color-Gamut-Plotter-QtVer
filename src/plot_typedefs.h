@@ -35,13 +35,13 @@ typedef struct IRGBFloat {
 
     friend bool operator<(const IRGBFloat &lhs, const IRGBFloat &rhs) {
         const double in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
-        const double out = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        const double out = rhs.R + (2 * rhs.G) + (3 * rhs.B);
         if (std::isnan(in) || std::isnan(out)) return false;
         return in < out;
     }
     friend bool operator==(const IRGBFloat &lhs, const IRGBFloat &rhs) {
         const double in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
-        const double out = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+        const double out = rhs.R + (2 * rhs.G) + (3 * rhs.B);
         if (std::isnan(in) && std::isnan(out)) return true;
         return in == out;
     }
