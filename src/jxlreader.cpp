@@ -211,11 +211,11 @@ bool JxlReader::processJxl()
 
             if (d->m_info.num_color_channels == 1) {
                 // Grayscale
-                d->m_pixelFormat.num_channels = 1;
+                d->m_pixelFormat.num_channels = 2;
                 d->m_colorID = GrayColorModelID;
             } else if (d->m_info.num_color_channels == 3 && !d->isCMYK) {
                 // RGBA
-                d->m_pixelFormat.num_channels = 3;
+                d->m_pixelFormat.num_channels = 4;
                 d->m_colorID = RGBColorModelID;
             } else if (d->m_info.num_color_channels == 3 && d->isCMYK) {
                 // CMYKA
@@ -223,7 +223,7 @@ bool JxlReader::processJxl()
                 d->m_colorID = CMYKColorModelID;
             } else {
                 qWarning() << "Forcing a RGBA conversion, unknown color space";
-                d->m_pixelFormat.num_channels = 3;
+                d->m_pixelFormat.num_channels = 4;
                 d->m_colorID = RGBColorModelID;
             }
             qDebug() << "Basic info get";

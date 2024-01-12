@@ -390,19 +390,19 @@ void Scatter2dChart::addDataPoints(QVector<ColorPoint> &dArray, int size)
 
     d->m_cPoints = &dArray;
 
-    std::vector<double> minMaxY;
-    quint32 maxOccurence = 1;
-    for (int i = 0; i < d->m_cPoints->size(); i++) {
-        if (maxOccurence < d->m_cPoints->at(i).second.N) {
-            maxOccurence = d->m_cPoints->at(i).second.N;
-        }
-        minMaxY.emplace_back(d->m_cPoints->at(i).first.Z);
-    }
-    const double min = *std::min_element(minMaxY.cbegin(), minMaxY.cend());
-    const double max = *std::max_element(minMaxY.cbegin(), minMaxY.cend());
+    const auto occ = std::max_element(dArray.cbegin(), dArray.cend(), [](const ColorPoint &lhs, const ColorPoint &rhs){
+                        return lhs.second.N < rhs.second.N;
+                    })->second.N;
+    const auto min = std::min_element(dArray.cbegin(), dArray.cend(), [](const ColorPoint &lhs, const ColorPoint &rhs){
+                        return lhs.first.Z < rhs.first.Z;
+                    })->first.Z;
+    const auto max = std::max_element(dArray.cbegin(), dArray.cend(), [](const ColorPoint &lhs, const ColorPoint &rhs){
+                         return lhs.first.Z < rhs.first.Z;
+                     })->first.Z;
+
     d->m_minY = min;
     d->m_maxY = max;
-    if (maxOccurence > 1) {
+    if (occ > 1) {
         d->isTrimmed = true;
     }
 

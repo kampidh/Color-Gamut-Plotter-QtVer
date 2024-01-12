@@ -25,6 +25,7 @@ using namespace QtDataVisualization;
 
 #include <QCheckBox>
 #include <QColorSpace>
+#include <QElapsedTimer>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QIODevice>
@@ -110,116 +111,129 @@ bool ScatterDialog::startParse()
 {
     QCoreApplication::processEvents();
 
+    QElapsedTimer ti;
+    ti.start();
+
+    const auto st = ti.elapsed();
+
+    {
+        ImageParserSC parsedImgInternal;
+
 #ifdef HAVE_JPEGXL
-    QFileInfo fi(d->m_fName);
-    if (fi.suffix() == "jxl") {
-        QProgressDialog pDial;
-        pDial.setRange(0, 0);
-        pDial.setLabelText("Opening image...");
-        pDial.setModal(true);
+        QFileInfo fi(d->m_fName);
+        if (fi.suffix() == "jxl") {
+            QProgressDialog pDial;
+            pDial.setRange(0, 0);
+            pDial.setLabelText("Opening image...");
+            pDial.setModal(true);
 
-        pDial.show();
-        QGuiApplication::processEvents();
+            pDial.show();
+            QGuiApplication::processEvents();
 
-        JxlReader jxlfile(d->m_fName);
-        QMessageBox msg;
-        if (!jxlfile.processJxl()) {
+            JxlReader jxlfile(d->m_fName);
             QMessageBox msg;
-            msg.warning(this, "Warning", "Failed to open JXL file!");
+            if (!jxlfile.processJxl()) {
+                QMessageBox msg;
+                msg.warning(this, "Warning", "Failed to open JXL file!");
+                pDial.close();
+                return false;
+            }
             pDial.close();
-            return false;
+            parsedImgInternal.inputFile(jxlfile.getRawImage(),
+                                        jxlfile.getRawICC(),
+                                        jxlfile.getImageColorDepth(),
+                                        jxlfile.getImageDimension(),
+                                        d->m_plotDensity,
+                                        &d->inputImg);
+        } else {
+            QProgressDialog pDial;
+            pDial.setRange(0, 0);
+            pDial.setLabelText("Opening image...");
+            pDial.setModal(true);
+
+            pDial.show();
+            QGuiApplication::processEvents();
+
+            const QImage imgs(d->m_fName);
+            if (imgs.isNull()) {
+                QMessageBox msg;
+                msg.warning(this, "Warning", "Invalid or unsupported image format!");
+                pDial.close();
+                return false;
+            }
+            pDial.close();
+            parsedImgInternal.inputFile(imgs, d->m_plotDensity, &d->inputImg);
         }
-        pDial.close();
-        d->parsedImg.inputFile(jxlfile.getRawImage(),
-                              jxlfile.getRawICC(),
-                              jxlfile.getImageColorDepth(),
-                              jxlfile.getImageDimension(),
-                              d->m_plotDensity,
-                              &d->inputImg);
-    } else {
-        QProgressDialog pDial;
-        pDial.setRange(0, 0);
-        pDial.setLabelText("Opening image...");
-        pDial.setModal(true);
-
-        pDial.show();
-        QGuiApplication::processEvents();
-
+#else
         const QImage imgs(d->m_fName);
         if (imgs.isNull()) {
             QMessageBox msg;
             msg.warning(this, "Warning", "Invalid or unsupported image format!");
-            pDial.close();
             return false;
         }
-        pDial.close();
-        d->parsedImg.inputFile(imgs, d->m_plotDensity, &d->inputImg);
-    }
-#else
-    const QImage imgs(d->m_fName);
-    if (imgs.isNull()) {
-        QMessageBox msg;
-        msg.warning(this, "Warning", "Invalid or unsupported image format!");
-        return false;
-    }
-    d->parsedImg.inputFile(imgs, d->m_plotDensity, &d->inputImg);
+        parsedImgInternal.inputFile(imgs, d->m_plotDensity, &d->inputImg);
 #endif
 
-    if (d->inputImg.isEmpty()) {
-        return false;
-    }
-
-    QVector<ImageXYZDouble> outGamut = *d->parsedImg.getOuterGamut();
-    d->m_profileName = d->parsedImg.getProfileName();
-    d->m_wtpt = d->parsedImg.getWhitePointXYY();
-
-    if (d->m_is2d) {
-        d->parsedImg.trimImage();
-        d->m_2dScatter = new Scatter2dChart(layout()->widget());
-        if (d->m_overrideSettings) {
-            d->m_2dScatter->overrideSettings(d->m_plotSetting);
-        }
-        d->m_2dScatter->addDataPoints(d->inputImg, 2);
-        d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
-        if (QByteArray *cs = d->parsedImg.getRawICC()) {
-            d->m_2dScatter->addColorSpace(*cs);
-        }
-        layout()->replaceWidget(container, d->m_2dScatter);
-        orthogonalViewChk->setVisible(false);
-    }
-
-    if (!d->m_is2d) {
-        if (d->m_plotType == 0) {
-            if (d->m_plotDensity >= 5000) {
-                d->parsedImg.trimImage(200000);
-            } else if (d->m_plotDensity >= 1000) {
-                d->parsedImg.trimImage(100000);
-            } else {
-                d->parsedImg.trimImage(50000);
-            }
-        } else if (d->m_plotType == 1) {
-            if (d->m_plotDensity >= 2000) {
-                d->parsedImg.trimImage(20000);
-            } else if (d->m_plotDensity >= 500) {
-                d->parsedImg.trimImage(10000);
-            } else {
-                d->parsedImg.trimImage(2000);
-            }
-        } else {
-            d->parsedImg.trimImage(1000);
-        }
-        const bool isSrgb = d->parsedImg.isMatchSrgb();
-        d->m_3dScatter = new Scatter3dChart(nullptr, windowHandle());
-        d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);
-        layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
-
-        if (!d->m_3dScatter->hasContext()) {
-            QMessageBox msgBox;
-            msgBox.setText("Couldn't initialize the OpenGL context.");
-            msgBox.exec();
+        if (d->inputImg.isEmpty()) {
             return false;
         }
+
+        QVector<ImageXYZDouble> outGamut = *parsedImgInternal.getOuterGamut();
+        d->m_profileName = parsedImgInternal.getProfileName();
+        d->m_wtpt = parsedImgInternal.getWhitePointXYY();
+
+        if (d->m_is2d) {
+            parsedImgInternal.trimImage();
+            d->m_2dScatter = new Scatter2dChart(layout()->widget());
+            if (d->m_overrideSettings) {
+                d->m_2dScatter->overrideSettings(d->m_plotSetting);
+            }
+            d->m_2dScatter->addDataPoints(d->inputImg, 2);
+            d->m_2dScatter->addGamutOutline(outGamut, d->m_wtpt);
+            if (QByteArray *cs = parsedImgInternal.getRawICC()) {
+                d->m_2dScatter->addColorSpace(*cs);
+            }
+            layout()->replaceWidget(container, d->m_2dScatter);
+            orthogonalViewChk->setVisible(false);
+        }
+
+        if (!d->m_is2d) {
+            if (d->m_plotType == 0) {
+                if (d->m_plotDensity >= 5000) {
+                    parsedImgInternal.trimImage(200000);
+                } else if (d->m_plotDensity >= 1000) {
+                    parsedImgInternal.trimImage(100000);
+                } else {
+                    parsedImgInternal.trimImage(50000);
+                }
+            } else if (d->m_plotType == 1) {
+                if (d->m_plotDensity >= 2000) {
+                    parsedImgInternal.trimImage(20000);
+                } else if (d->m_plotDensity >= 500) {
+                    parsedImgInternal.trimImage(10000);
+                } else {
+                    parsedImgInternal.trimImage(2000);
+                }
+            } else {
+                parsedImgInternal.trimImage(1000);
+            }
+            const bool isSrgb = parsedImgInternal.isMatchSrgb();
+            d->m_3dScatter = new Scatter3dChart(nullptr, windowHandle());
+            d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);
+            layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
+
+            if (!d->m_3dScatter->hasContext()) {
+                QMessageBox msgBox;
+                msgBox.setText("Couldn't initialize the OpenGL context.");
+                msgBox.exec();
+                return false;
+            }
+        }
     }
+
+    const auto ed = ti.elapsed();
+
+    qDebug() << "encode time" << ed - st;
 
     QSize screenSize = screen()->size();
 

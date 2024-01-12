@@ -23,6 +23,7 @@ public:
     void inputFile(const QImage &imgIn, int size, QVector<ColorPoint> *outCp);
     void inputFile(const QByteArray &rawData, const QByteArray &iccData, ImageColorDepthID depthId, QSize imgSize, int size, QVector<ColorPoint> *outCp);
     QString getProfileName();
+    QString getMaxOccurence();
     QVector3D getWhitePointXYY();
     QVector<ImageXYZDouble> *getXYYArray() const;
     QVector<ImageXYZDouble> *getOuterGamut() const;
@@ -34,10 +35,10 @@ public:
 
 private:
     template<typename T>
-    void calculateFromRaw(QVector<const quint8 *> &dataPointers,
-                          const cmsHTRANSFORM &srgbtoxyz,
-                          const cmsHTRANSFORM &imgtoxyz,
-                          const cmsHTRANSFORM &xyztosrgb);
+    void calculateFromRaw();
+
+    void iccParseWPColorant();
+    void iccPutTransforms();
 
     class Private;
     Private* const d {nullptr};
