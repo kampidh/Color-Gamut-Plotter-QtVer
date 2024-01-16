@@ -100,10 +100,10 @@ void MainWindow::displayOverrideOpts(int ndx)
 
     // it's a bit jarring when resizing...
 
-    // QGuiApplication::processEvents();
-    // resize(minimumSizeHint());
-    // setMinimumSize(minimumSizeHint());
-    // setMaximumSize(minimumSizeHint());
+    QGuiApplication::processEvents();
+    resize(minimumSizeHint());
+    setMinimumSize(minimumSizeHint());
+    setMaximumSize(minimumSizeHint());
 
     // adjustSize();
 }
@@ -180,10 +180,10 @@ void MainWindow::goPlot()
             break;
         // 2D
         case 2:
-        default:
+        case 3:
             switch (plotDensNdx) {
             case 0:
-                return 800;
+                return 1000;
                 break;
             case 1:
                 return 4000;

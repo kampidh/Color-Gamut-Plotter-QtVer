@@ -20,13 +20,14 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # only set for static Qt build
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++ -ggdb")
 
 LIST (APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 LIST (APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_BINARY_DIR}/i")
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent Gui)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets DataVisualization Charts Concurrent Gui)
 
 include(FeatureSummary)
 include(MacroBoolTo01)
@@ -49,6 +50,8 @@ set(PROJECT_SOURCES
         src/constant_dataset.h
         src/plot_typedefs.h
         src/global_variables.h
+        src/custom3dchart.h
+        src/custom3dchart.cpp
 )
 
 # move 3rd party into separate project
@@ -60,6 +63,8 @@ set(PROJECT_SOURCES
 
 find_package(LCMS2 2.13 REQUIRED)
 find_package(JPEGXL 0.7.0)
+find_package(OpenGL REQUIRED)
+include_directories(${OPENGL_INCLUDE_DIRS})
 
 macro_bool_to_01(JPEGXL_FOUND HAVE_JPEGXL)
 
@@ -100,6 +105,7 @@ target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::DataVisualization)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Charts)
 target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Concurrent)
+target_link_libraries(gamutplotter PRIVATE Qt${QT_VERSION_MAJOR}::Gui)
 
 set_target_properties(gamutplotter PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER saklistudio.com
@@ -120,6 +126,8 @@ if(JPEGXL_FOUND)
     include_directories(${JPEGXL_INCLUDE_DIRS})
     target_link_libraries(gamutplotter PRIVATE ${JPEGXL_LIBRARIES})
 endif()
+
+target_link_libraries(gamutplotter PRIVATE ${OPENGL_LIBRARIES})
 
 install(TARGETS gamutplotter
     BUNDLE DESTINATION .

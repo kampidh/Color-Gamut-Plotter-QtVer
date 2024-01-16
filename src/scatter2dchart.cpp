@@ -185,6 +185,8 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     : QWidget{parent}
     , d(new Private)
 {
+    // setFocusPolicy(Qt::ClickFocus);
+
     // prepare timer for downscaling
     d->m_scrollTimer = new QTimer(this);
     d->m_scrollTimer->setSingleShot(true);

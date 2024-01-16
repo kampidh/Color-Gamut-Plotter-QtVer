@@ -401,17 +401,12 @@ void ImageParserSC::calculateFromRaw()
                 const auto res = irgbTrim.insert(imgin);
                 if (!res.second) {
                     res.first->N = res.first->N + 1;
-                } else {
-                    const double r = value<T>(res.first->R);
-                    const double g = value<T>(res.first->G);
-                    const double b = value<T>(res.first->B);
-                    rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&r), sizeof(r)));
-                    rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&g), sizeof(g)));
-                    rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&b), sizeof(b)));
                 }
 
                 if (i % 200000 == 0) {
                     if (pDial.wasCanceled()) break;
+                    const QString colorLoading = QString("Finding duplicate colors...\n%1").arg(QString::number(irgbTrim.size()));
+                    pDial.setLabelText(colorLoading);
                     pDial.setValue(i);
                     QGuiApplication::processEvents();
                 }
@@ -432,6 +427,13 @@ void ImageParserSC::calculateFromRaw()
 
             ImageRGBTyped<T> maxocc;
             for (const auto &i : irgbTrim) {
+                const double r = value<T>(i.R);
+                const double g = value<T>(i.G);
+                const double b = value<T>(i.B);
+                rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&r), sizeof(r)));
+                rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&g), sizeof(g)));
+                rawTrimData.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&b), sizeof(b)));
+
                 if (maxocc.N < i.N) {
                     maxocc = i;
                 }
@@ -444,17 +446,19 @@ void ImageParserSC::calculateFromRaw()
             qDebug() << "From to" << d->m_rawImageByteSize / sizeof(T) / d->numChannels << irgbTrim.size();
             {
                 if (std::numeric_limits<T>::is_integer) {
-                    d->m_maxOccStr = QString("Pixel with max occurence: RGB[%1, %2, %3] : %4")
+                    d->m_maxOccStr = QString("Most frequent: RGB[%1, %2, %3]:%4 | Total unique: %5")
                                          .arg(QString::number(maxocc.R),
                                               QString::number(maxocc.G),
                                               QString::number(maxocc.B),
-                                              QString::number(maxocc.N));
+                                              QString::number(maxocc.N),
+                                              QString::number(trimmedSize));
                 } else {
-                    d->m_maxOccStr = QString("Pixel with max occurence: RGB[%1, %2, %3] : %4")
+                    d->m_maxOccStr = QString("Most frequent: RGB[%1, %2, %3]:%4 | Total unique: %5")
                                          .arg(QString::number(maxocc.R, 'f', 4),
                                               QString::number(maxocc.G, 'f', 4),
                                               QString::number(maxocc.B, 'f', 4),
-                                              QString::number(maxocc.N));
+                                              QString::number(maxocc.N),
+                                              QString::number(trimmedSize));
                 }
             }
             qDebug() << d->m_maxOccStr;
@@ -565,9 +569,13 @@ void ImageParserSC::calculateFromRaw()
 
                 cmsXYZ2xyY(&bufxyY, &pix);
 
-                const float alpha =
-                    std::min(std::max(std::log(static_cast<float>(numOcc.at(i))) / maxOccurenceLog, 0.01f),
-                             1.0f);
+                const float alpha = [&]() {
+                    if (d->m_maxOccurence == 1) {
+                        return 1.0f;
+                    }
+                    return std::min(std::max(std::log(static_cast<float>(numOcc.at(i))) / maxOccurenceLog, 0.01f),
+                                    1.0f);
+                }();
 
                 const ImageRGBFloat irgba = [&]() {
                     return ImageRGBFloat{iRgb[0], iRgb[1], iRgb[2], numOcc.at(i), alpha};
@@ -690,11 +698,6 @@ void ImageParserSC::trimImage(quint64 size)
 
     quint64 it = 0;
 
-    quint64 maxOccurence = d->m_maxOccurence;
-    float maxOccurenceLog = 0.0;
-
-    maxOccurenceLog = std::log(static_cast<float>(maxOccurence));
-
     if (d->m_outCp->size() > size && size != 0) {
         pDial.reset();
         pDial.setMinimum(0);
@@ -716,8 +719,10 @@ void ImageParserSC::trimImage(quint64 size)
 
             if (stat.second) {
                 it++;
-                if (it % 1000 == 0) {
+                if (it % 10000 == 0) {
                     if (pDial.wasCanceled()) break;
+                    const QString colorLoading = QString("Trimming...(2nd pass)\n%1").arg(QString::number(imm2.size()));
+                    pDial.setLabelText(colorLoading);
                     pDial.setValue(it);
                     QGuiApplication::processEvents();
                 }
