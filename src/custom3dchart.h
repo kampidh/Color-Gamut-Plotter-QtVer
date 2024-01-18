@@ -10,7 +10,7 @@ class Custom3dChart : public QOpenGLWidget
 {
     Q_OBJECT
 public:
-    Custom3dChart(QWidget *parent = nullptr);
+    Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent = nullptr);
     ~Custom3dChart();
 
     void addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint);
@@ -21,6 +21,8 @@ public:
 
 private slots:
     void changeBgColor();
+    void copyState();
+    void pasteState();
 
 private:
     void initializeGL() override;
@@ -35,6 +37,7 @@ private:
     void contextMenuEvent(QContextMenuEvent *event) override;
 
     void doUpdate();
+    void doNavigation();
 
     class Private;
     Private *const d{nullptr};

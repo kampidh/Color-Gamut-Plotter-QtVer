@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QDebug>
+#include <QSurfaceFormat>
 #include <lcms2_fast_float.h>
 
 #include "constant_dataset.h"
@@ -70,6 +71,19 @@ QVector<QVector2D> Daylight_Locus = []() {
 
 int main(int argc, char *argv[])
 {
+    QSurfaceFormat fmt;
+    // fmt.setVersion(4,0);
+    // fmt.setColorSpace(QColorSpace::SRgbLinear);
+    // fmt.setSamples(16);
+    // fmt.setRedBufferSize(16);
+    // fmt.setGreenBufferSize(16);
+    // fmt.setBlueBufferSize(16);
+    // fmt.setDepthBufferSize(48);
+    // fmt.setStencilBufferSize(16);
+    // fmt.setProfile(QSurfaceFormat::CoreProfile);
+    fmt.setSwapInterval(1);
+    QSurfaceFormat::setDefaultFormat(fmt);
+
     cmsPlugin(cmsFastFloatExtensions());
     QApplication a(argc, argv);
 

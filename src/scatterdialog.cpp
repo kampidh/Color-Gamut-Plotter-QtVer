@@ -29,6 +29,7 @@ using namespace QtDataVisualization;
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QImageReader>
 #include <QIODevice>
 #include <QLabel>
 #include <QMessageBox>
@@ -111,6 +112,7 @@ void ScatterDialog::overrideSettings(const PlotSetting2D &plot)
 
 bool ScatterDialog::startParse()
 {
+    imgDetailLbl->setToolTip(QString());
     QCoreApplication::processEvents();
 
     QElapsedTimer ti;
@@ -124,7 +126,7 @@ bool ScatterDialog::startParse()
 
 #ifdef HAVE_JPEGXL
         QFileInfo fi(d->m_fName);
-        if (fi.suffix() == "jxl") {
+        if (fi.suffix() == "jxl" || d->m_fName.isEmpty()) {
             QProgressDialog pDial;
             pDial.setRange(0, 0);
             pDial.setLabelText("Opening image...");
@@ -148,6 +150,21 @@ bool ScatterDialog::startParse()
                                         jxlfile.getImageDimension(),
                                         d->m_plotDensity,
                                         &d->inputImg);
+
+            if (d->m_fName.isEmpty()) {
+                d->m_fName = QString(
+                    "Internally stored JXL art - <a "
+                    "href='https://jxl-art.surma.technology/"
+                    "?zcode="
+                    "C89MKclQMDez4PJIzUzPKAEzg5xDFAwNuPyLMlPzShJLMvPzFAy5nDJLUlILgIqBMqEFxYm5BTmpCkZcwYWlqalVqVxcmWkKyQ"
+                    "p2QIUKCroK4Qq6IAZQLFzbT9cvHChhAOSDpPwUdC3gbFegaQZcAA'>[source in jxl-art.surma.technology]</a>");
+                imgDetailLbl->setToolTip(
+                    QString("Link will open: "
+                            "https://jxl-art.surma.technology/"
+                            "?zcode="
+                            "C89MKclQMDez4PJIzUzPKAEzg5xDFAwNuPyLMlPzShJLMvPzFAy5nDJLUlILgIqBMqEFxYm5BTmpCkZcwYWlqalVqV"
+                            "xcmWkKyQp2QIUKCroK4Qq6IAZQLFzbT9cvHChhAOSDpPwUdC3gbFegaQZcAA"));
+            }
         } else {
             QProgressDialog pDial;
             pDial.setRange(0, 0);
@@ -157,7 +174,9 @@ bool ScatterDialog::startParse()
             pDial.show();
             QGuiApplication::processEvents();
 
-            const QImage imgs(d->m_fName);
+            QImageReader::setAllocationLimit(512);
+            QImageReader reader(d->m_fName);
+            const QImage imgs = reader.read();
             if (imgs.isNull()) {
                 QMessageBox msg;
                 msg.warning(this, "Warning", "Invalid or unsupported image format!");
@@ -236,13 +255,13 @@ bool ScatterDialog::startParse()
             } else {
                 orthogonalViewChk->setVisible(false);
                 if (d->m_plotDensity >= 10000) {
-                    parsedImgInternal.trimImage(20000000);
+                    parsedImgInternal.trimImage(0);
                 } else if (d->m_plotDensity >= 4000) {
                     parsedImgInternal.trimImage(4000000);
                 } else {
                     parsedImgInternal.trimImage(400000);
                 }
-                d->m_custom3d = new Custom3dChart(layout()->widget());
+                d->m_custom3d = new Custom3dChart(d->m_plotSetting, layout()->widget());
                 d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt);
                 if (!d->m_custom3d->checkValidity()) {
                     QMessageBox msgBox;
@@ -300,6 +319,7 @@ bool ScatterDialog::startParse()
         connect(rstViewBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
     }
 
+    layout()->setContentsMargins(9, 9, 9, 9);
     resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
 
     return true;
@@ -453,6 +473,13 @@ void ScatterDialog::keyPressEvent(QKeyEvent *event)
             layout()->setContentsMargins(0, 0, 0, 0);
 #endif
             setWindowState(Qt::WindowFullScreen);
+// apparently it works here..
+#if defined(Q_OS_WIN)
+            if (windowHandle()) {
+                HWND handle = reinterpret_cast<HWND>(windowHandle()->winId());
+                SetWindowLongPtr(handle, GWL_STYLE, GetWindowLongPtr(handle, GWL_STYLE) | WS_BORDER);
+            }
+#endif
         } else {
             d->m_isFullscreen = false;
             setWindowState(Qt::WindowNoState);
@@ -470,8 +497,7 @@ void ScatterDialog::keyPressEvent(QKeyEvent *event)
 }
 
 bool ScatterDialog::eventFilter(QObject *obj, QEvent *event) {
-    if (event->type() == QEvent::KeyPress)
-    {
+    if (event->type() == QEvent::KeyPress) {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         // qDebug() << "key " << keyEvent->key() << "from" << obj;
         if (obj->inherits("Scatter3dChart") || obj->inherits("Custom3dChart")) {
@@ -479,4 +505,17 @@ bool ScatterDialog::eventFilter(QObject *obj, QEvent *event) {
         }
     }
     return QObject::eventFilter(obj, event);
+}
+
+bool ScatterDialog::event(QEvent *event) {
+// does this even works...? https://doc.qt.io/qt-6.5/windows-issues.html
+// #if defined(Q_OS_WIN)
+//     if (event->type() == QEvent::WinIdChange) {
+//         if (windowHandle()) {
+//             HWND handle = reinterpret_cast<HWND>(windowHandle()->winId());
+//             SetWindowLongPtr(handle, GWL_STYLE, GetWindowLongPtr(handle, GWL_STYLE) | WS_BORDER);
+//         }
+//     }
+// #endif
+    return QWidget::event(event);
 }

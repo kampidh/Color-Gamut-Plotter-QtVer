@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>396</width>
-    <height>936</height>
+    <height>1185</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -35,7 +35,7 @@
    <string/>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout_4">
+   <layout class="QVBoxLayout" name="verticalLayout_5">
     <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <property name="spacing">
@@ -84,29 +84,29 @@
         <item row="0" column="1">
          <widget class="QComboBox" name="plotTypeCmb">
           <property name="currentText">
-           <string>Experimental 3D</string>
+           <string>3D Point Cloud</string>
           </property>
           <property name="currentIndex">
            <number>3</number>
           </property>
           <item>
            <property name="text">
-            <string>3D Plot - Monochromatic</string>
+            <string>3D Chart (Mono)</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3D Plot - Color</string>
+            <string>3D Chart (Color)</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2D Plot - Color</string>
+            <string>2D Point Cloud</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>Experimental 3D</string>
+            <string>3D Point Cloud</string>
            </property>
           </item>
          </widget>
@@ -389,6 +389,42 @@
        </widget>
       </item>
       <item>
+       <widget class="QGroupBox" name="override3dChk">
+        <property name="title">
+         <string>Render parameters</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <item>
+          <layout class="QFormLayout" name="formLayout_3">
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_5">
+             <property name="text">
+              <string>Multisampling</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSpinBox" name="multisampleSpn">
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>16</number>
+             </property>
+             <property name="singleStep">
+              <number>2</number>
+             </property>
+             <property name="value">
+              <number>4</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
        <spacer name="verticalSpacer_2">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
@@ -400,6 +436,13 @@
          </size>
         </property>
        </spacer>
+      </item>
+      <item>
+       <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QGroupBox" name="groupBox">
@@ -429,6 +472,9 @@
             <widget class="QLineEdit" name="fnameFieldTxt">
              <property name="text">
               <string/>
+             </property>
+             <property name="placeholderText">
+              <string>[will use example image if empty] ;)</string>
              </property>
             </widget>
            </item>

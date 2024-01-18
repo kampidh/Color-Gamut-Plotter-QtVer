@@ -710,11 +710,13 @@ void ImageParserSC::trimImage(quint64 size)
 
         it = 0;
 
-        QRandomGenerator *rng(QRandomGenerator::global());
+        QRandomGenerator rng(QRandomGenerator::global()->generate());
         std::unordered_set<ColorPoint> imm2;
 
+        quint32 it2 = 0;
+
         while (true) {
-            const quint64 indx = rng->bounded(d->m_outCp->size() - 1);
+            const quint64 indx = rng.bounded(d->m_outCp->size() - 1);
             const auto stat = imm2.insert(d->m_outCp->at(indx));
 
             if (stat.second) {
@@ -729,6 +731,12 @@ void ImageParserSC::trimImage(quint64 size)
 
                 if (it == size) break;
             }
+            it2++;
+
+            // Limit considerably
+            // Seriously how do I ...
+            if (it2 > size * 4)
+                break;
         }
 
         d->m_outCp->clear();

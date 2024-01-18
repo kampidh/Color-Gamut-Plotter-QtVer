@@ -49,6 +49,12 @@ MainWindow::MainWindow(QWidget *parent)
         override2dChk->setVisible(false);
     }
 
+    if (plotTypeCmb->currentIndex() == 3) {
+        override3dChk->setVisible(true);
+    } else {
+        override3dChk->setVisible(false);
+    }
+
     connect(plotBtn, &QPushButton::clicked, this, &MainWindow::goPlot);
     connect(fnameOpenBtn, &QPushButton::clicked, this, &MainWindow::openFileName);
     connect(plotTypeCmb, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::displayOverrideOpts);
@@ -98,6 +104,12 @@ void MainWindow::displayOverrideOpts(int ndx)
         override2dChk->setVisible(false);
     }
 
+    if (ndx == 3) {
+        override3dChk->setVisible(true);
+    } else {
+        override3dChk->setVisible(false);
+    }
+
     // it's a bit jarring when resizing...
 
     QGuiApplication::processEvents();
@@ -124,12 +136,12 @@ void MainWindow::goPlot()
     plotBtn->setEnabled(false);
     const QString fileName = fnameFieldTxt->text();
 
-    if (fileName == "") {
-        QMessageBox msg;
-        msg.information(this, "Information", "File name is empty!");
-        plotBtn->setEnabled(true);
-        return;
-    }
+    // if (fileName == "") {
+    //     QMessageBox msg;
+    //     msg.information(this, "Information", "File name is empty!");
+    //     plotBtn->setEnabled(true);
+    //     return;
+    // }
 
     /*
      * Explicitly disable WebP for now, as I am still don't know how to patch it into Qt 5.15 yet...
@@ -221,6 +233,13 @@ void MainWindow::goPlot()
         };
 
         d->sc->overrideSettings(plotSet);
+    }
+
+    if (plotTypeIndex == 3) {
+        PlotSetting2D plotset;
+        plotset.multisample3d = multisampleSpn->value();
+
+        d->sc->overrideSettings(plotset);
     }
 
     if (!d->sc->startParse()) {

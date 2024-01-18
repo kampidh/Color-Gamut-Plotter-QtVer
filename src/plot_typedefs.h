@@ -1,6 +1,7 @@
 #ifndef PLOT_TYPEDEFS_H
 #define PLOT_TYPEDEFS_H
 
+#include "qdebug.h"
 #include <QVector3D>
 #include <cmath>
 
@@ -79,12 +80,12 @@ typedef QPair<ImageXYZDouble, ImageRGBFloat> ColorPoint;
 inline bool operator==(const ColorPoint &lhs, const ColorPoint &rhs) {
     return (lhs.first.X == rhs.first.X) && (lhs.first.Y == rhs.first.Y) && (lhs.first.Z == rhs.first.Z);
 }
-inline bool operator<(const ColorPoint &lhs, const ColorPoint &rhs) {
-    return lhs.second.N < rhs.second.N;
-}
-inline bool operator>(const ColorPoint &lhs, const ColorPoint &rhs) { return rhs < lhs; }
-inline bool operator<=(const ColorPoint &lhs, const ColorPoint &rhs) { return !(lhs > rhs); }
-inline bool operator>=(const ColorPoint &lhs, const ColorPoint &rhs) { return !(lhs < rhs); }
+// inline bool operator<(const ColorPoint &lhs, const ColorPoint &rhs) {
+//     return lhs.second.N < rhs.second.N;
+// }
+// inline bool operator>(const ColorPoint &lhs, const ColorPoint &rhs) { return rhs < lhs; }
+// inline bool operator<=(const ColorPoint &lhs, const ColorPoint &rhs) { return !(lhs > rhs); }
+// inline bool operator>=(const ColorPoint &lhs, const ColorPoint &rhs) { return !(lhs < rhs); }
 
 template<>
 struct std::hash<ColorPoint>
@@ -193,20 +194,21 @@ struct std::hash<ImageRGBTyped<T>>
     }
 };
 
-typedef struct {
-    bool enableAA;
-    bool forceBucket;
-    bool use16Bit;
-    bool showStatistics;
-    bool showGridsAndSpectrum;
-    bool showsRGBGamut;
-    bool showImageGamut;
-    bool showMacAdamEllipses;
-    bool showColorCheckerPoints;
-    bool showBlBodyLocus;
-    double particleOpacity;
-    int particleSize;
-    double renderScale;
-} PlotSetting2D;
+struct PlotSetting2D {
+    bool enableAA{false};
+    bool forceBucket{false};
+    bool use16Bit{false};
+    bool showStatistics{false};
+    bool showGridsAndSpectrum{false};
+    bool showsRGBGamut{false};
+    bool showImageGamut{false};
+    bool showMacAdamEllipses{false};
+    bool showColorCheckerPoints{false};
+    bool showBlBodyLocus{false};
+    double particleOpacity{0.0};
+    int particleSize{0};
+    double renderScale{0.0};
+    int multisample3d{0};
+};
 
 #endif // PLOT_TYPEDEFS_H

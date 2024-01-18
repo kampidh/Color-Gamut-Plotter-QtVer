@@ -8,6 +8,10 @@
 #include <QFile>
 #include <QIODevice>
 
+// Self made jxlart, source:
+// https://jxl-art.surma.technology/?zcode=C89MKclQMDez4PJIzUzPKAEzg5xDFAwNuPyLMlPzShJLMvPzFAy5nDJLUlILgIqBMqEFxYm5BTmpCkZcwYWlqalVqVxcmWkKyQp2QIUKCroK4Qq6IAZQLFzbT9cvHChhAOSDpPwUdC3gbFegaQZcAA
+static constexpr char jxlart[] = {"ff0afa2f41918806010050004b38606cb31e2825e145ed837b4824090b004d00"};
+
 template<typename T>
 inline void ImageOutCallback(void *opaque, size_t x, size_t y, size_t num_pixels, const void *pixels)
 {
@@ -66,13 +70,25 @@ JxlReader::~JxlReader()
 
 bool JxlReader::processJxl()
 {
-    QFile fileIn(d->m_filename);
+    const QByteArray data = [&]() {
+        if (!d->m_filename.isEmpty()) {
+            QFile fileIn(d->m_filename);
+            fileIn.open(QIODevice::ReadOnly);
+            if (!fileIn.isReadable()) {
+                qWarning() << "Cannot read file!";
+                fileIn.close();
+                return QByteArray();
+            }
+            QByteArray out = fileIn.readAll();
+            fileIn.close();
+            return out;
+        } else {
+            QByteArray hx{jxlart};
+            return QByteArray::fromHex(hx);
+        }
+    }();
 
-    fileIn.open(QIODevice::ReadOnly);
-
-    if (!fileIn.isReadable()) {
-        qWarning() << "Cannot read file!";
-        fileIn.close();
+    if (data.isEmpty()) {
         return false;
     }
 
@@ -94,10 +110,6 @@ bool JxlReader::processJxl()
         qWarning() << "JxlDecoderSetParallelRunner failed";
         return false;
     }
-
-    const auto data = fileIn.readAll();
-
-    fileIn.close();
 
     const auto validation =
         JxlSignatureCheck(reinterpret_cast<const uint8_t *>(data.constData()), static_cast<size_t>(data.size()));
