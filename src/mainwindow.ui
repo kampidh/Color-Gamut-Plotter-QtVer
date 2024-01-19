@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>396</width>
-    <height>1185</height>
+    <width>417</width>
+    <height>1153</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -56,19 +56,26 @@
       <item>
        <widget class="QLabel" name="label_3">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+         <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
         </property>
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:10pt; font-weight:700;&quot;&gt;CIE 1931 xyY Gamut Plotter&lt;/span&gt;&lt;/p&gt;&lt;p&gt;There are two 3D Plot modes that can be selected:&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- Monochromatic&lt;/span&gt;&lt;br/&gt;Denser particle with faster calculation, but monochrome and slow display performance.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- Color&lt;/span&gt;&lt;br/&gt;Full color display and faster display performance, but particles are not as dense as monochromatic and need a massive VRAM.&lt;/p&gt;&lt;p&gt;And there's the usual 2D Plot.&lt;/p&gt;&lt;p&gt;----------&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:10pt; font-weight:700;&quot;&gt;CIE 1931 xyY Gamut Plotter&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 3D Chart&lt;/span&gt;&lt;br/&gt;Low density chart using Qt Data Visualization. Color version needs a substantial amount of VRAM.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 2D Point Cloud&lt;/span&gt;&lt;br/&gt;High density 2D chart with CPU rendering, capable of rendering into very large 16-bit wide gamut images with QT 6.2 and above.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 3D Point Cloud&lt;/span&gt;&lt;br/&gt;High density 3D preview with OpenGL rendering and walk-through camera control.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_2">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
         </property>
        </widget>
       </item>
@@ -120,6 +127,9 @@
         </item>
         <item row="1" column="1">
          <widget class="QComboBox" name="plotDensCmb">
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
           <item>
            <property name="text">
             <string>Low (Fast)</string>
@@ -132,7 +142,7 @@
           </item>
           <item>
            <property name="text">
-            <string>Ultra (Slowest, eat lots of VRAM on 3D Color)</string>
+            <string>Ultra (Slowest, lots of VRAM on 3D Chart)</string>
            </property>
           </item>
          </widget>

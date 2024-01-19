@@ -651,12 +651,20 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
         d->nStrifeRight = true;
         break;
     case Qt::Key_C:
-        d->enableNav = true;
-        d->nDown = true;
+        if (event->modifiers() == Qt::ControlModifier) {
+            copyState();
+        } else {
+            d->enableNav = true;
+            d->nDown = true;
+        }
         break;
     case Qt::Key_V:
-        d->enableNav = true;
-        d->nUp = true;
+        if (event->modifiers() == Qt::ControlModifier) {
+            pasteState();
+        } else {
+            d->enableNav = true;
+            d->nUp = true;
+        }
         break;
     case Qt::Key_R:
         resetCamera();
@@ -934,13 +942,13 @@ void Custom3dChart::contextMenuEvent(QContextMenuEvent *event)
     QMenu menu(this);
 
     QAction copyThis(this);
-    copyThis.setText("Copy plot state");
+    copyThis.setText("Copy plot state (Ctrl+C)");
     connect(&copyThis, &QAction::triggered, this, [&]() {
         copyState();
     });
 
     QAction pasteThis(this);
-    pasteThis.setText("Paste plot state");
+    pasteThis.setText("Paste plot state (Ctrl+V)");
     connect(&pasteThis, &QAction::triggered, this, [&]() {
         pasteState();
     });
@@ -1046,7 +1054,8 @@ void Custom3dChart::pasteState()
     QString fromClipStr = d->m_clipb->text();
     if (fromClipStr.contains("Scatter3DClip:")) {
         QByteArray fromClip = QByteArray::fromHex(fromClipStr.mid(fromClipStr.indexOf(":") + 1, -1).toUtf8());
-        if (fromClip.size() != 77)
+        const int bufferSize = (sizeof(bool) * 5) + (sizeof(float) * 7) + sizeof(QVector3D) + (sizeof(QColor) * 2);
+        if (fromClip.size() != bufferSize)
             return;
 
         const char* clipPointer = fromClip.constData();
@@ -1090,7 +1099,7 @@ void Custom3dChart::pasteState()
         d->yawAngle = std::max(0.0f, std::min(360.0f, yawAngle));
         d->turntableAngle = std::max(0.0f, std::min(360.0f, turntableAngle));
         d->fov = std::max(1.0f, std::min(170.0f, fov));
-        d->camDistToTarget = std::max(0.1f, camDistToTarget);
+        d->camDistToTarget = std::max(0.001f, camDistToTarget);
         d->pitchAngle = std::max(-89.99f, std::min(89.99f, pitchAngle));
         d->particleSize = std::max(0.0f, std::min(20.0f, particleSize));
         d->targetPos = targetPos;
