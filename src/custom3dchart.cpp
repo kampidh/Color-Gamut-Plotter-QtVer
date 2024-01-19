@@ -24,9 +24,11 @@
 
 #include <QtMath>
 
-static constexpr int frameinterval = 5; // frame duration cap
-// static constexpr float minAlpha = 0.03;
+static constexpr int frameinterval = 2; // frame duration cap
 static constexpr size_t absolutemax = 50000000;
+static constexpr bool useShaderFile = true;
+
+static constexpr int fpsBufferSize = 10;
 
 static constexpr char vertShader[] = {
     "#version 330 core\n"
@@ -43,7 +45,6 @@ static constexpr char vertShader[] = {
 
     "void main()\n"
     "{\n"
-    "    //gl_Position = mPers * mLook * mModel * vec4(aPosition, 1.0f);\n"
     "    gl_Position = mView * vec4(aPosition, 1.0f);\n"
     "    if (bVarPointSize != 0) {\n"
     "        float calcSize = (fPointSize * fVarPointSizeK) / (fVarPointSizeDepth * gl_Position.z + 0.01f);\n"
@@ -60,6 +61,8 @@ static constexpr char fragShader[] = {
 
     "in vec4 vertexColor;\n\n"
 
+    "uniform int monoMode;\n"
+    "uniform vec3 monoColor;\n"
     "uniform int maxMode;\n"
     "uniform float minAlpha;\n\n"
 
@@ -67,10 +70,19 @@ static constexpr char fragShader[] = {
     "{\n"
     "    if (maxMode != 0) {\n"
     "        float alphaV = ((pow(vertexColor.a, 0.454545f) * (1.0f - minAlpha)) + minAlpha);\n"
-    "        vec4 absCol = vec4(vertexColor.r * alphaV, vertexColor.g * alphaV, vertexColor.b * alphaV, 1.0f);\n"
+    "        vec4 absCol;\n"
+    "        if (monoMode == 0) {\n"
+    "            absCol = vec4(vertexColor.r * alphaV, vertexColor.g * alphaV, vertexColor.b * alphaV, 1.0f);\n"
+    "        } else {\n"
+    "            absCol = vec4(monoColor.r * alphaV, monoColor.g * alphaV, monoColor.b * alphaV, 1.0f);\n"
+    "        }\n"
     "        FragColor = absCol;\n"
     "    } else {\n"
-    "        FragColor = vec4(vertexColor.r, vertexColor.g, vertexColor.b, max(vertexColor.a, minAlpha));\n"
+    "        if (monoMode == 0) {\n"
+    "            FragColor = vec4(vertexColor.r, vertexColor.g, vertexColor.b, max(vertexColor.a, minAlpha));\n"
+    "        } else {\n"
+    "            FragColor = vec4(monoColor.r, monoColor.g, monoColor.b, max(0.005f, minAlpha));\n"
+    "        }\n"
     "    }\n"
     "}\n\0"};
 
@@ -79,11 +91,9 @@ class Q_DECL_HIDDEN Custom3dChart::Private
 public:
     PlotSetting2D plotSetting;
 
-    QByteArray m_iccProfile{};
-    QByteArray m_rawData{};
-
-    QByteArray m_vecpos{};
-    QByteArray m_veccol{};
+    QVector<QVector3D> vecPosData;
+    QVector<QVector4D> vecColData;
+    QVector<uint32_t> vecDataOrder;
 
     QVector3D m_whitePoint{};
 
@@ -94,10 +104,11 @@ public:
     quint32 framesRendered{0};
     quint64 frametime{0};
     QTimer *m_timer{nullptr};
-    QElapsedTimer m_frameTimer;
     QElapsedTimer elTim;
     float m_fps{0.0};
     float frameDelay{0.0};
+    QVector<float> accumulatedFps;
+    int accFpsIdx{0};
 
     bool enableMouseNav{false};
     bool continousRotate{false};
@@ -110,33 +121,27 @@ public:
     bool useMaxBlend{false};
     bool useVariableSize{false};
     bool useSmoothParticle{true};
+    bool useMonochrome{false};
+    int clipboardSize{0};
     float minalpha{0.0};
     float fov{45};
-    // float camPosZ{0.25};
-    // float camPosX{0.0};
     float camDistToTarget{0.75};
     float pitchAngle{0.0};
     float yawAngle{180.0};
     float turntableAngle{0.0};
     float particleSize{2.0};
-    // QVector3D translateVal{0, 0, 0};
-    // QVector3D rotateVal{0, 0, 0};
     QVector3D targetPos{0.0, 0.0, 0.25};
 
     QColor bgColor{16, 16, 16};
-
-    // float zoomBuffer{0.0};
-    // QVector3D translateBuffer{0, 0, 0};
-    // QVector3D rotateBuffer{0, 0, 0};
+    QColor monoColor{255, 255, 255};
 
     QClipboard *m_clipb;
 
     QPoint m_lastPos{0, 0};
     bool isMouseHold{false};
     bool isShiftHold{false};
-    // double m_offsetX{0.0};
-    // double m_offsetY{0.0};
 
+    bool ongoingNav{false};
     bool enableNav{false};
     bool nForward{false};
     bool nBackward{false};
@@ -145,15 +150,13 @@ public:
     bool nUp{false};
     bool nDown{false};
 
-    // int mouseMoveX{0};
-    // int mouseMoveY{0};
-    // QPoint mouseDelta{0,0};
-
     QOpenGLShaderProgram *scatterPrg;
     QOpenGLBuffer *scatterPosVbo;
     QOpenGLBuffer *scatterColVbo;
+    QOpenGLBuffer *scatterIdxVbo;
     QOpenGLVertexArrayObject *scatterVao;
     bool isValid{true};
+    bool isShaderFile{true};
 };
 
 Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
@@ -162,6 +165,7 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
 {
     d->plotSetting = plotSetting;
     d->m_clipb = QApplication::clipboard();
+    d->accumulatedFps.resize(fpsBufferSize);
 
     setMinimumSize(10, 10);
     setFocusPolicy(Qt::ClickFocus);
@@ -178,13 +182,11 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
     // fmt.setGreenBufferSize(16);
     // fmt.setBlueBufferSize(16);
     // fmt.setAlphaBufferSize(16);
-    // fmt.setDepthBufferSize(48);
+    // fmt.setDepthBufferSize(24);
     // fmt.setStencilBufferSize(16);
     // fmt.setProfile(QSurfaceFormat::CoreProfile);
     fmt.setSwapInterval(1);
     setFormat(fmt);
-
-    d->m_frameTimer.start();
 
     d->m_timer = new QTimer(this);
     d->elTim.start();
@@ -205,42 +207,25 @@ Custom3dChart::~Custom3dChart()
 
 void Custom3dChart::initializeGL()
 {
-    qDebug() << "init";
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
-    qDebug() << format();
-
     f->glEnable(GL_PROGRAM_POINT_SIZE);
+
+    qDebug() << "Initializing opengl context with format:";
+    qDebug() << format();
 
     d->scatterPrg = new QOpenGLShaderProgram(context());
     d->scatterPrg->create();
 
-    // if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Vertex, "./vertex.glsl")) {
-    //     qWarning() << "Failed to load vertex shader!";
-    //     d->isValid = false;
-    // }
-    // if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Fragment, "./fragment.glsl")) {
-    //     qWarning() << "Failed to load fragment shader!";
-    //     d->isValid = false;
-    // }
-
-    if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Vertex, vertShader)) {
-        qWarning() << "Failed to load vertex shader!";
-        d->isValid = false;
-    }
-    if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Fragment, fragShader)) {
-        qWarning() << "Failed to load fragment shader!";
-        d->isValid = false;
-    }
+    reloadShaders();
 
     if (!d->scatterPrg->link()) {
         qWarning() << "Failed to link shader program!";
         d->isValid = false;
+        return;
     }
 
     d->scatterPrg->bind();
-
-    // qDebug() << d->scatterPrg->uniformLocation("fPointSize");
 
     d->scatterVao = new QOpenGLVertexArrayObject(context());
     d->scatterVao->create();
@@ -250,7 +235,7 @@ void Custom3dChart::initializeGL()
     d->scatterPosVbo->create();
     d->scatterPosVbo->bind();
     d->scatterPosVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
-    d->scatterPosVbo->allocate(d->m_vecpos.constData(), d->m_vecpos.size());
+    d->scatterPosVbo->allocate(d->vecPosData.constData(), d->vecPosData.size() * sizeof(QVector3D));
     d->scatterPrg->enableAttributeArray("aPosition");
     d->scatterPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
 
@@ -258,16 +243,23 @@ void Custom3dChart::initializeGL()
     d->scatterColVbo->create();
     d->scatterColVbo->bind();
     d->scatterColVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
-    d->scatterColVbo->allocate(d->m_veccol.constData(), d->m_veccol.size());
+    d->scatterColVbo->allocate(d->vecColData.constData(), d->vecColData.size() * sizeof(QVector4D));
     d->scatterPrg->enableAttributeArray("aColor");
     d->scatterPrg->setAttributeBuffer("aColor", GL_FLOAT, 0, 4, 0);
 
+    // depth ordering berat cuy
+    // d->scatterIdxVbo = new QOpenGLBuffer(QOpenGLBuffer::IndexBuffer);
+    // d->scatterIdxVbo->create();
+    // d->scatterIdxVbo->bind();
+    // d->scatterIdxVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    // d->scatterIdxVbo->allocate(d->vecDataOrder.constData(), d->vecDataOrder.size() * sizeof(uint32_t));
+
     d->scatterVao->release();
 
-    d->m_vecpos.clear();
-    d->m_veccol.clear();
-    d->m_vecpos.squeeze();
-    d->m_veccol.squeeze();
+    d->vecPosData.clear();
+    d->vecPosData.squeeze();
+    d->vecColData.clear();
+    d->vecColData.squeeze();
 }
 
 void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint)
@@ -277,10 +269,10 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
         const float xyytrans[3] = {(float)(cp.first.X - dWhitePoint.x()),
                                    (float)(cp.first.Y - dWhitePoint.y()),
                                    (float)(cp.first.Z)};
-        const float rgba[4] = {cp.second.R, cp.second.G, cp.second.B, cp.second.A};
+        // const float rgba[4] = {cp.second.R, cp.second.G, cp.second.B, cp.second.A};
 
-        d->m_vecpos.append(QByteArray::fromRawData(reinterpret_cast<const char *>(xyytrans), sizeof(xyytrans)));
-        d->m_veccol.append(QByteArray::fromRawData(reinterpret_cast<const char *>(rgba), sizeof(rgba)));
+        d->vecPosData.append(QVector3D{xyytrans[0], xyytrans[1], xyytrans[2]});
+        d->vecColData.append(QVector4D{cp.second.R, cp.second.G, cp.second.B, cp.second.A});
     }
     d->arrsize = dArray.size();
 
@@ -289,8 +281,68 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
 
     d->m_whitePoint = dWhitePoint;
 
+    // berat cuy
+    // d->vecDataOrder.resize(d->arrsize);
+    // std::iota(d->vecDataOrder.begin(), d->vecDataOrder.end(), 0);
+
     if (d->continousRotate) {
         d->m_timer->start(frameinterval);
+    }
+}
+
+void Custom3dChart::reloadShaders()
+{
+    if (QOpenGLContext::currentContext() != context() && context()->isValid()) {
+        makeCurrent();
+    }
+
+    if (!d->scatterPrg->shaders().isEmpty()) {
+        qDebug() << "Reloading shaders...";
+        d->scatterPrg->removeAllShaders();
+    } else {
+        qDebug() << "Initializing shaders...";
+    }
+
+    if (useShaderFile) {
+        d->isShaderFile = true;
+        qDebug() << "Loading vertex shader file...";
+        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Vertex, "./3dpoint-vertex.glsl")) {
+            d->isShaderFile = false;
+            qDebug() << "Loading shader from file failed, using internal shader instead.";
+            if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Vertex, vertShader)) {
+                qWarning() << "Failed to load vertex shader!";
+                d->isValid = false;
+                return;
+            }
+        }
+        qDebug() << "Loading fragment shader file...";
+        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Fragment, "./3dpoint-fragment.glsl")) {
+            d->isShaderFile = false;
+            qDebug() << "Loading shader from file failed, using internal shader instead.";
+            if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Fragment, fragShader)) {
+                qWarning() << "Failed to load fragment shader!";
+                d->isValid = false;
+                return;
+            }
+        }
+    } else {
+        d->isShaderFile = false;
+        if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Vertex, vertShader)) {
+            qWarning() << "Failed to load vertex shader!";
+            d->isValid = false;
+            return;
+        }
+        if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Fragment, fragShader)) {
+            qWarning() << "Failed to load fragment shader!";
+            d->isValid = false;
+            return;
+        }
+    }
+
+    if (!d->scatterPrg->link()) {
+        qWarning() << "Failed to link shader program!";
+        d->isValid = false;
+        return;
     }
 }
 
@@ -305,7 +357,7 @@ void Custom3dChart::paintGL()
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     size_t maxPartNum = std::min((size_t)d->arrsize, absolutemax);
 
-    d->frameDelay = (float)(d->elTim.nsecsElapsed() - d->frametime) / 1.0e9;
+    d->frameDelay = (double)(d->elTim.nsecsElapsed() - d->frametime) / 1.0e9;
     d->elTim.restart();
     d->frametime = d->elTim.nsecsElapsed();
 
@@ -314,11 +366,9 @@ void Custom3dChart::paintGL()
     if (d->continousRotate) {
         const float currentRotation = (20.0 * d->frameDelay);
         if (currentRotation < 360) {
-            // d->yawAngle += currentRotation;
             d->turntableAngle += currentRotation;
         }
         if (d->turntableAngle >= 360) {
-            // d->yawAngle -= 360;
             d->turntableAngle -= 360;
         }
     }
@@ -337,36 +387,23 @@ void Custom3dChart::paintGL()
         }
     } else {
         f->glEnable(GL_DEPTH_TEST);
-        // f->glDepthMask(GL_FALSE);
-        // f->glDepthFunc(GL_LESS);
     }
 
     if (d->useSmoothParticle) {
         f->glEnable(GL_POINT_SMOOTH);
     }
 
-    // ...why there's no this function on context...
-    // forget it, I set in shader instead
-    // glPointSize(d->particleSize);
-
-    // Already taken care of during resizeGL
-    // f->glViewport(0, 0, width(), height());
-
     f->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     QMatrix4x4 persMatrix;
     persMatrix.perspective(d->fov, (width() * devicePixelRatioF()) / (height() * devicePixelRatioF()), 0.0001, 50.0);
 
-    QVector3D camIfYaw{qSin(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget,
-                       qCos(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget,
-                       (qSin(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget)};
-
-    // QVector3D camPos{d->camPosX,
-    //                  (qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget),
-    //                  (qSin(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget) + d->camPosZ};
+    QVector3D camPos{(float)(qSin(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget),
+                     (float)(qCos(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget),
+                     (float)((qSin(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget))};
 
     QMatrix4x4 lookMatrix;
-    lookMatrix.lookAt(camIfYaw + d->targetPos, d->targetPos, {0, 0, 1});
+    lookMatrix.lookAt(camPos + d->targetPos, d->targetPos, {0, 0, 1});
 
     QMatrix4x4 modelMatrix;
     modelMatrix.scale(1, 1, 0.5);
@@ -374,15 +411,17 @@ void Custom3dChart::paintGL()
 
     const QMatrix4x4 totalMatrix = persMatrix * lookMatrix * modelMatrix;
 
+    // berat cuy
+    // if (f->glIsEnabled(GL_DEPTH_TEST) == 0) {
+    //     std::sort(d->vecDataOrder.begin(), d->vecDataOrder.end(), [&](uint32_t lhs, uint32_t rhs){
+    //         const QVector4D lhh = totalMatrix * QVector4D(d->vecPosData[lhs], 1.0);
+    //         const QVector4D rhh = totalMatrix * QVector4D(d->vecPosData[rhs], 1.0);
+    //         return lhh.z() < rhh.z();
+    //     });
+    //     std::reverse(d->vecDataOrder.begin(), d->vecDataOrder.end());
+    // }
+
     d->scatterPrg->bind();
-
-    // d->scatterPosVbo->bind();
-    // d->scatterPrg->enableAttributeArray("aPosition");
-    // d->scatterPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
-
-    // d->scatterColVbo->bind();
-    // d->scatterPrg->enableAttributeArray("aColor");
-    // d->scatterPrg->setAttributeBuffer("aColor", GL_FLOAT, 0, 4, 0);
 
     if (d->useMaxBlend) {
         d->scatterPrg->setUniformValue("maxMode", true);
@@ -390,9 +429,6 @@ void Custom3dChart::paintGL()
         d->scatterPrg->setUniformValue("maxMode", false);
     }
 
-    // d->scatterPrg->setUniformValue("mPers", persMatrix);
-    // d->scatterPrg->setUniformValue("mLook", lookMatrix);
-    // d->scatterPrg->setUniformValue("mModel", modelMatrix);
     d->scatterPrg->setUniformValue("mView", totalMatrix);
 
     if (d->useVariableSize) {
@@ -404,10 +440,20 @@ void Custom3dChart::paintGL()
     }
     d->scatterPrg->setUniformValue("fPointSize", d->particleSize);
     d->scatterPrg->setUniformValue("minAlpha", d->minalpha);
+    d->scatterPrg->setUniformValue("monoColor", QVector3D{(float)d->monoColor.redF(), (float)d->monoColor.greenF(), (float)d->monoColor.blueF()});
+    if (d->useMonochrome) {
+        d->scatterPrg->setUniformValue("monoMode", true);
+    } else {
+        d->scatterPrg->setUniformValue("monoMode", false);
+    }
 
     d->scatterVao->bind();
 
     f->glDrawArrays(GL_POINTS, 0, maxPartNum);
+
+    // berat cuy
+    // d->scatterIdxVbo->write(0, d->vecDataOrder.constData(), d->vecDataOrder.size() * sizeof(uint32_t));
+    // f->glDrawElements(GL_POINTS, maxPartNum, GL_UNSIGNED_INT, (void*)0);
 
     d->scatterVao->release();
 
@@ -423,15 +469,16 @@ void Custom3dChart::paintGL()
     pai.drawRect(0,0,1,1);
 
     if (d->showLabel) {
-        // d->framesRendered++;
-
-        // if (d->m_frameTimer.elapsed() >= 100) {
-        //     d->m_fps = d->framesRendered / ((double)d->m_frameTimer.nsecsElapsed() / 1.0e9);
-        //     d->framesRendered = 0;
-        //     d->m_frameTimer.restart();
-        // }
-
-        d->m_fps = 1.0 / d->frameDelay;
+        if (d->accFpsIdx >= d->accumulatedFps.size()) {
+            d->accFpsIdx = 0;
+        }
+        d->accumulatedFps[d->accFpsIdx] = 1.0f / d->frameDelay;
+        d->accFpsIdx++;
+        // d->m_fps = 1.0f / d->frameDelay;
+        if (d->accFpsIdx >= d->accumulatedFps.size()) {
+            d->m_fps = std::accumulate(d->accumulatedFps.constBegin(), d->accumulatedFps.constEnd(), 0.0f) / (float)d->accumulatedFps.size();
+            d->accFpsIdx = 0;
+        }
 
         d->m_labelFont.setPixelSize(14);
         pai.setPen(Qt::lightGray);
@@ -442,7 +489,7 @@ void Custom3dChart::paintGL()
             QString(
                 "Unique colors: %2 | FPS: %1 | Min alpha: %3 | Size: %10 (%14-%15) | %11\nYaw: %4 | Pitch: %9 | FOV: %5 | Dist: %6 | "
                 "Target:[%7:%8:%12] | Turntable: %13")
-                .arg(QString::number(d->m_fps, 'f', 0),
+                .arg(QString::number(d->m_fps, 'f', 2),
                      (maxPartNum == absolutemax) ? QString("%1(capped)").arg(QString::number(maxPartNum))
                                                  : QString::number(maxPartNum),
                      QString::number(d->minalpha, 'f', 3),
@@ -480,6 +527,7 @@ void Custom3dChart::paintGL()
             "(F1): Show/hide this help\n"
             "Note: depth buffer is not used with alpha < 0.9\n"
             "Max blending is useful to see the frequent colors\n"
+            "Shader source: %1\n"
             "-------------------\n"
             "(Wheel): Zoom\n"
             "(LMB): Rotate/orbit\n"
@@ -491,15 +539,17 @@ void Custom3dChart::paintGL()
             "(Z/X): Decrease/increase particle size\n"
             "(-/=): Decrease/increase minimum alpha\n"
             "(R): Reset camera\n"
+            "(K): Toggle color/monochrome\n"
             "(L): Show/hide label\n"
             "(M): Use Max/Lighten blending\n"
             "(N): Toggle mouse navigation on/off\n"
             "(P): Toggle variable particle size\n"
             "(O): Toggle smooth particle\n"
             "(Shift+B): Change background color\n"
+            "(F5): Reload shaders\n"
             "(F10): Toggle turntable animation\n"
             "(F11): Show fullscreen\n"
-            "(F12): Save plot image");
+            "(F12): Save plot image").arg(d->isShaderFile ? "File" : "Internal");
 
         QRect boundRect;
         const QMargins lblMargin(8, 8, 8, 8);
@@ -532,7 +582,7 @@ void Custom3dChart::doNavigation()
     const float baseSpeed = 0.5;
     const float calcSpeed = baseSpeed * shiftMultp * d->frameDelay;
 
-    if (d->enableNav) { // WASD
+    if (d->enableNav) {
         QVector3D camFrontBack{sinYaw * cosPitch * d->camDistToTarget,
                                cosYaw * cosPitch * d->camDistToTarget,
                                sinPitch * d->camDistToTarget};
@@ -611,6 +661,9 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
     case Qt::Key_R:
         resetCamera();
         break;
+    case Qt::Key_K:
+        d->useMonochrome = !d->useMonochrome;
+        break;
     case Qt::Key_L:
         d->showLabel = !d->showLabel;
         break;
@@ -657,6 +710,9 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
     case Qt::Key_F1:
         d->showHelp = !d->showHelp;
         break;
+    case Qt::Key_F5:
+        reloadShaders();
+        break;
     case Qt::Key_F10:
         if (d->continousRotate) {
             d->continousRotate = false;
@@ -674,13 +730,24 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Shift:
         d->isShiftHold = true;
         break;
+    case Qt::Key_Escape:
+        if (d->enableMouseNav) {
+            d->enableMouseNav = false;
+            setCursor(Qt::ArrowCursor);
+            setMouseTracking(false);
+        }
+        break;
     default:
         // do not render
         return;
         break;
     }
 
-    if (d->enableNav && !d->m_timer->isActive()) {
+    if (d->enableNav && event->isAutoRepeat()) {
+        return;
+    }
+
+    if (d->enableNav && !d->m_timer->isActive() && !event->isAutoRepeat()) {
         d->m_timer->start(frameinterval);
         d->elTim.restart();
     }
@@ -690,6 +757,10 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
 
 void Custom3dChart::keyReleaseEvent(QKeyEvent *event)
 {
+    if (event->isAutoRepeat()) {
+        return;
+    }
+
     switch (event->key()) {
     case Qt::Key_Shift:
         d->isShiftHold = false;
@@ -730,11 +801,8 @@ void Custom3dChart::passKeypres(QKeyEvent *e)
 void Custom3dChart::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton || event->button() == Qt::MiddleButton) {
-        // setCursor(Qt::OpenHandCursor);
         setCursor(Qt::BlankCursor);
         d->m_lastPos = event->pos();
-        // d->m_lastPos = QPoint(width() / 2, height() / 2);
-        // d->m_lastPos = {width() / 2, height() / 2};
     }
 }
 
@@ -842,6 +910,7 @@ void Custom3dChart::resetCamera()
     d->toggleOpaque = false;
     d->useVariableSize = false;
     d->useSmoothParticle = true;
+    d->useMonochrome = false;
     d->minalpha = 0.0;
     d->yawAngle = 180.0;
     d->turntableAngle = 0.0;
@@ -850,6 +919,12 @@ void Custom3dChart::resetCamera()
     d->pitchAngle = 0.0;
     d->particleSize = 2.0;
     d->targetPos = QVector3D{0.0, 0.0, 0.25};
+    d->monoColor = QColor{255, 255, 255};
+    d->bgColor = QColor{16, 16, 16};
+    makeCurrent();
+    QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
+    f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+    doneCurrent();
 
     doUpdate();
 }
@@ -876,10 +951,17 @@ void Custom3dChart::contextMenuEvent(QContextMenuEvent *event)
         changeBgColor();
     });
 
+    QAction changeMono(this);
+    changeMono.setText("Change monochrome color...");
+    connect(&changeMono, &QAction::triggered, this, [&]() {
+        changeMonoColor();
+    });
+
     menu.addAction(&copyThis);
     menu.addAction(&pasteThis);
     menu.addSeparator();
     menu.addAction(&changeBg);
+    menu.addAction(&changeMono);
 
     menu.exec(event->globalPos());
 }
@@ -904,9 +986,25 @@ void Custom3dChart::changeBgColor()
     }
 }
 
+void Custom3dChart::changeMonoColor()
+{
+    if (d->isShiftHold) {
+        d->isShiftHold = false;
+    }
+    const QColor currentBg = d->monoColor;
+    const QColor setMonoColor =
+        QColorDialog::getColor(currentBg, this, "Set monochrome color", QColorDialog::ShowAlphaChannel);
+    if (setMonoColor.isValid()) {
+        d->monoColor = setMonoColor;
+
+        doUpdate();
+    }
+}
+
 void Custom3dChart::copyState()
 {
-    QByteArray toClip{"Scatter3DClip:"};
+    QByteArray headClip{"Scatter3DClip:"};
+    QByteArray toClip;
     toClip.append(
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMaxBlend), sizeof(d->useMaxBlend)).toHex());
     toClip.append(
@@ -915,6 +1013,8 @@ void Custom3dChart::copyState()
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useVariableSize), sizeof(d->useVariableSize)).toHex());
     toClip.append(
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useSmoothParticle), sizeof(d->useSmoothParticle)).toHex());
+    toClip.append(
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMonochrome), sizeof(d->useMonochrome)).toHex());
     toClip.append(
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->minalpha), sizeof(d->minalpha)).toHex());
     toClip.append(
@@ -931,8 +1031,14 @@ void Custom3dChart::copyState()
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->particleSize), sizeof(d->particleSize)).toHex());
     toClip.append(
         QByteArray::fromRawData(reinterpret_cast<const char *>(&d->targetPos), sizeof(d->targetPos)).toHex());
+    toClip.append(
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->monoColor), sizeof(d->monoColor)).toHex());
+    toClip.append(
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->bgColor), sizeof(d->bgColor)).toHex());
 
-    d->m_clipb->setText(toClip);
+    headClip.append(toClip);
+
+    d->m_clipb->setText(headClip);
 }
 
 void Custom3dChart::pasteState()
@@ -940,7 +1046,7 @@ void Custom3dChart::pasteState()
     QString fromClipStr = d->m_clipb->text();
     if (fromClipStr.contains("Scatter3DClip:")) {
         QByteArray fromClip = QByteArray::fromHex(fromClipStr.mid(fromClipStr.indexOf(":") + 1, -1).toUtf8());
-        if (fromClip.size() != 44)
+        if (fromClip.size() != 77)
             return;
 
         const char* clipPointer = fromClip.constData();
@@ -952,6 +1058,8 @@ void Custom3dChart::pasteState()
         const bool useVariableSize = *reinterpret_cast<const bool *>(clipPointer);
         clipPointer += sizeof(bool);
         const bool useSmoothParticle = *reinterpret_cast<const bool *>(clipPointer);
+        clipPointer += sizeof(bool);
+        const bool useMonochrome = *reinterpret_cast<const bool *>(clipPointer);
         clipPointer += sizeof(bool);
         const float minalpha = *reinterpret_cast<const float *>(clipPointer);
         clipPointer += sizeof(float);
@@ -968,11 +1076,16 @@ void Custom3dChart::pasteState()
         const float particleSize = *reinterpret_cast<const float *>(clipPointer);
         clipPointer += sizeof(float);
         QVector3D targetPos = *reinterpret_cast<const QVector3D *>(clipPointer);
+        clipPointer += sizeof(QVector3D);
+        QColor monoColor = *reinterpret_cast<const QColor *>(clipPointer);
+        clipPointer += sizeof(QColor);
+        QColor bgColor = *reinterpret_cast<const QColor *>(clipPointer);
 
         d->useMaxBlend = useMaxBlend;
         d->toggleOpaque = toggleOpaque;
         d->useVariableSize = useVariableSize;
         d->useSmoothParticle = useSmoothParticle;
+        d->useMonochrome = useMonochrome;
         d->minalpha = std::max(0.0f, std::min(1.0f, minalpha));
         d->yawAngle = std::max(0.0f, std::min(360.0f, yawAngle));
         d->turntableAngle = std::max(0.0f, std::min(360.0f, turntableAngle));
@@ -980,8 +1093,15 @@ void Custom3dChart::pasteState()
         d->camDistToTarget = std::max(0.1f, camDistToTarget);
         d->pitchAngle = std::max(-89.99f, std::min(89.99f, pitchAngle));
         d->particleSize = std::max(0.0f, std::min(20.0f, particleSize));
-
         d->targetPos = targetPos;
+        d->monoColor = monoColor;
+        if (d->bgColor != bgColor) {
+            d->bgColor = bgColor;
+            makeCurrent();
+            QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
+            f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+            doneCurrent();
+        }
 
         doUpdate();
     }

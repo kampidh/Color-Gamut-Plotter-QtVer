@@ -21,6 +21,7 @@ public:
 
 private slots:
     void changeBgColor();
+    void changeMonoColor();
     void copyState();
     void pasteState();
 
@@ -38,6 +39,7 @@ private:
 
     void doUpdate();
     void doNavigation();
+    void reloadShaders();
 
     class Private;
     Private *const d{nullptr};

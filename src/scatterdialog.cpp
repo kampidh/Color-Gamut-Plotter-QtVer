@@ -174,7 +174,9 @@ bool ScatterDialog::startParse()
             pDial.show();
             QGuiApplication::processEvents();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
             QImageReader::setAllocationLimit(512);
+#endif
             QImageReader reader(d->m_fName);
             const QImage imgs = reader.read();
             if (imgs.isNull()) {
