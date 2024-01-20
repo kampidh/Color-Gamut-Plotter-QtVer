@@ -10,7 +10,9 @@
 
 // Self made jxlart, source:
 // https://jxl-art.surma.technology/?zcode=C89MKclQMDez4PJIzUzPKAEzg5xDFAwNuPyLMlPzShJLMvPzFAy5nDJLUlILgIqBMqEFxYm5BTmpCkZcwYWlqalVqVxcmWkKyQp2QIUKCroK4Qq6IAZQLFzbT9cvHChhAOSDpPwUdC3gbFegaQZcAA
-static constexpr char jxlart[] = {"ff0afa2f41918806010050004b38606cb31e2825e145ed837b4824090b004d00"};
+// or data:image/jxl;base64,/wr6L0GRiAYBAFAASzhgbLMeKCXhRe2De0gkCQsATQA=
+// static constexpr char jxlart[] = {"ff0afa2f41918806010050004b38606cb31e2825e145ed837b4824090b004d00"};
+static constexpr char jxlart[] = {"/wr6L0GRiAYBAFAASzhgbLMeKCXhRe2De0gkCQsATQA="};
 
 template<typename T>
 inline void ImageOutCallback(void *opaque, size_t x, size_t y, size_t num_pixels, const void *pixels)
@@ -84,7 +86,7 @@ bool JxlReader::processJxl()
             return out;
         } else {
             QByteArray hx{jxlart};
-            return QByteArray::fromHex(hx);
+            return QByteArray::fromBase64(hx);
         }
     }();
 

@@ -573,7 +573,7 @@ void ImageParserSC::calculateFromRaw()
                     if (d->m_maxOccurence == 1) {
                         return 1.0f;
                     }
-                    return std::min(std::max(std::log(static_cast<float>(numOcc.at(i))) / maxOccurenceLog, 0.01f),
+                    return std::min(std::max(std::log(static_cast<float>(numOcc.at(i))) / maxOccurenceLog, 0.0f),
                                     1.0f);
                 }();
 

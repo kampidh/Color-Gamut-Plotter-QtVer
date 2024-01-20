@@ -123,7 +123,7 @@ public:
     bool useSmoothParticle{true};
     bool useMonochrome{false};
     int clipboardSize{0};
-    float minalpha{0.0};
+    float minalpha{0.01};
     float fov{45};
     float camDistToTarget{0.75};
     float pitchAngle{0.0};
@@ -615,23 +615,23 @@ void Custom3dChart::resizeEvent(QResizeEvent *event)
 
 void Custom3dChart::keyPressEvent(QKeyEvent *event)
 {
-    const float shiftMultp = d->isShiftHold ? 10.0 : 1.0;
+    const float shiftMultp = d->isShiftHold ? 10.0f : 1.0f;
 
     switch (event->key()) {
     case Qt::Key_Minus:
-        d->minalpha -= 0.002 * shiftMultp;
+        d->minalpha -= 0.002f * shiftMultp;
         d->minalpha = std::max(0.0f, d->minalpha);
         break;
     case Qt::Key_Equal:
-        d->minalpha += 0.002 * shiftMultp;
+        d->minalpha += 0.002f * shiftMultp;
         d->minalpha = std::min(1.0f, d->minalpha);
         break;
     case Qt::Key_BracketLeft:
-        d->fov += 1.0 * shiftMultp;
+        d->fov += 1.0f * shiftMultp;
         d->fov = std::min(170.0f, d->fov);
         break;
     case Qt::Key_BracketRight:
-        d->fov -= 1.0 * shiftMultp;
+        d->fov -= 1.0f * shiftMultp;
         d->fov = std::max(1.0f, d->fov);
         break;
     case Qt::Key_W:
@@ -678,17 +678,17 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Q:
         d->toggleOpaque = !d->toggleOpaque;
         if (d->toggleOpaque) {
-            d->minalpha = 1.0;
+            d->minalpha = 1.0f;
         } else {
-            d->minalpha = 0.0;
+            d->minalpha = 0.01f;
         }
         break;
     case Qt::Key_X:
-        d->particleSize += 0.1;
+        d->particleSize += 0.1f;
         d->particleSize = std::min(20.0f, d->particleSize);
         break;
     case Qt::Key_Z:
-        d->particleSize -= 0.1;
+        d->particleSize -= 0.1f;
         d->particleSize = std::max(0.0f, d->particleSize);
         break;
     case Qt::Key_M:
@@ -816,7 +816,7 @@ void Custom3dChart::mousePressEvent(QMouseEvent *event)
 
 void Custom3dChart::mouseMoveEvent(QMouseEvent *event)
 {
-    const float orbitSpeedDivider = d->isShiftHold ? 10.0 : 30.0;
+    const float orbitSpeedDivider = d->isShiftHold ? 10.0f : 30.0f;
     if (event->buttons() & Qt::LeftButton || d->enableMouseNav) {
         setCursor(Qt::BlankCursor);
         d->isMouseHold = true;
@@ -889,23 +889,23 @@ void Custom3dChart::mouseReleaseEvent(QMouseEvent *event)
 void Custom3dChart::wheelEvent(QWheelEvent *event)
 {
     const QPoint numDegrees = event->angleDelta();
-    const double zoomIncrement = (numDegrees.y() / 1200.0);
+    const double zoomIncrement = (numDegrees.y() / 1200.0f);
 
     if (!d->isShiftHold) {
         if (d->camDistToTarget > 0.0001) {
             d->camDistToTarget -= zoomIncrement * d->camDistToTarget;
 
             if (d->camDistToTarget < 0.01)
-                d->camDistToTarget = 0.01;
+                d->camDistToTarget = 0.01f;
             doUpdate();
         }
     } else {
         if (zoomIncrement < 0) {
-            d->fov += 5.0;
+            d->fov += 5.0f;
             d->fov = std::min(170.0f, d->fov);
             doUpdate();
         } else if (zoomIncrement > 0) {
-            d->fov -= 5.0;
+            d->fov -= 5.0f;
             d->fov = std::max(1.0f, d->fov);
             doUpdate();
         }
@@ -919,14 +919,14 @@ void Custom3dChart::resetCamera()
     d->useVariableSize = false;
     d->useSmoothParticle = true;
     d->useMonochrome = false;
-    d->minalpha = 0.0;
-    d->yawAngle = 180.0;
-    d->turntableAngle = 0.0;
-    d->fov = 45;
-    d->camDistToTarget = 0.75;
-    d->pitchAngle = 0.0;
-    d->particleSize = 2.0;
-    d->targetPos = QVector3D{0.0, 0.0, 0.25};
+    d->minalpha = 0.01f;
+    d->yawAngle = 180.0f;
+    d->turntableAngle = 0.0f;
+    d->fov = 45.0f;
+    d->camDistToTarget = 0.75f;
+    d->pitchAngle = 0.0f;
+    d->particleSize = 2.0f;
+    d->targetPos = QVector3D{0.0f, 0.0f, 0.25f};
     d->monoColor = QColor{255, 255, 255};
     d->bgColor = QColor{16, 16, 16};
     makeCurrent();
@@ -1014,37 +1014,37 @@ void Custom3dChart::copyState()
     QByteArray headClip{"Scatter3DClip:"};
     QByteArray toClip;
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMaxBlend), sizeof(d->useMaxBlend)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMaxBlend), sizeof(d->useMaxBlend)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->toggleOpaque), sizeof(d->toggleOpaque)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->toggleOpaque), sizeof(d->toggleOpaque)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useVariableSize), sizeof(d->useVariableSize)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useVariableSize), sizeof(d->useVariableSize)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useSmoothParticle), sizeof(d->useSmoothParticle)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useSmoothParticle), sizeof(d->useSmoothParticle)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMonochrome), sizeof(d->useMonochrome)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMonochrome), sizeof(d->useMonochrome)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->minalpha), sizeof(d->minalpha)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->minalpha), sizeof(d->minalpha)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->yawAngle), sizeof(d->yawAngle)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->yawAngle), sizeof(d->yawAngle)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->turntableAngle), sizeof(d->turntableAngle)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->turntableAngle), sizeof(d->turntableAngle)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->fov), sizeof(d->fov)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->fov), sizeof(d->fov)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->camDistToTarget), sizeof(d->camDistToTarget)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->camDistToTarget), sizeof(d->camDistToTarget)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->pitchAngle), sizeof(d->pitchAngle)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->pitchAngle), sizeof(d->pitchAngle)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->particleSize), sizeof(d->particleSize)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->particleSize), sizeof(d->particleSize)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->targetPos), sizeof(d->targetPos)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->targetPos), sizeof(d->targetPos)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->monoColor), sizeof(d->monoColor)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->monoColor), sizeof(d->monoColor)));
     toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->bgColor), sizeof(d->bgColor)).toHex());
+        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->bgColor), sizeof(d->bgColor)));
 
-    headClip.append(toClip);
+    headClip.append(toClip.toBase64());
 
     d->m_clipb->setText(headClip);
 }
@@ -1053,7 +1053,7 @@ void Custom3dChart::pasteState()
 {
     QString fromClipStr = d->m_clipb->text();
     if (fromClipStr.contains("Scatter3DClip:")) {
-        QByteArray fromClip = QByteArray::fromHex(fromClipStr.mid(fromClipStr.indexOf(":") + 1, -1).toUtf8());
+        QByteArray fromClip = QByteArray::fromBase64(fromClipStr.mid(fromClipStr.indexOf(":") + 1, -1).toUtf8());
         const int bufferSize = (sizeof(bool) * 5) + (sizeof(float) * 7) + sizeof(QVector3D) + (sizeof(QColor) * 2);
         if (fromClip.size() != bufferSize)
             return;
