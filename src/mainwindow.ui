@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>417</width>
+    <width>450</width>
     <height>1153</height>
    </rect>
   </property>
@@ -29,7 +29,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Qt CIE1931 Gamut Plotter</string>
+   <string>Image Gamut Plotter</string>
   </property>
   <property name="toolTip">
    <string/>
@@ -62,7 +62,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:10pt; font-weight:700;&quot;&gt;Image Gamut Plotter&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 3D Chart&lt;/span&gt;&lt;br/&gt;Low density chart using Qt Data Visualization. Color version needs a substantial amount of VRAM.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 2D Point Cloud&lt;/span&gt;&lt;br/&gt;Double precision, high density 2D chart with CPU rendering, capable of rendering into very large 16-bit wide gamut images with QT 6.2 and above. Only available in CIE 1931 xyY mode.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 3D Point Cloud&lt;/span&gt;&lt;br/&gt;Single precision, high density 3D chart with OpenGL rendering and walk-through camera control. Multiple chart modes.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700;&quot;&gt;Image Gamut Plotter&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 2D Point Cloud&lt;/span&gt;&lt;br/&gt;Double precision, high density 2D chart with CPU rendering, capable of rendering into very large 16-bit wide gamut images with QT 6.2 and above. Only available in CIE 1931 xyY mode.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;- 3D Point Cloud&lt;/span&gt;&lt;br/&gt;Single precision, high density 3D chart with OpenGL rendering and walk-through camera control. Multiple chart modes.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -94,18 +94,8 @@
            <string>3D Point Cloud</string>
           </property>
           <property name="currentIndex">
-           <number>3</number>
+           <number>1</number>
           </property>
-          <item>
-           <property name="text">
-            <string>3D Chart (Mono)</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>3D Chart (Color)</string>
-           </property>
-          </item>
           <item>
            <property name="text">
             <string>2D Point Cloud</string>
@@ -142,7 +132,7 @@
           </item>
           <item>
            <property name="text">
-            <string>Ultra (Slowest, lots of VRAM on 3D Chart)</string>
+            <string>Ultra (Slowest)</string>
            </property>
           </item>
          </widget>

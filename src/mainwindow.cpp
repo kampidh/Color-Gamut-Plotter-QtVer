@@ -44,13 +44,13 @@ MainWindow::MainWindow(QWidget *parent)
     setupUi(this);
     setAcceptDrops(true);
 
-    if (plotTypeCmb->currentIndex() == 2) {
+    if (plotTypeCmb->currentIndex() == 0) {
         override2dChk->setVisible(true);
     } else {
         override2dChk->setVisible(false);
     }
 
-    if (plotTypeCmb->currentIndex() == 3) {
+    if (plotTypeCmb->currentIndex() == 1) {
         override3dChk->setVisible(true);
     } else {
         override3dChk->setVisible(false);
@@ -102,13 +102,13 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 void MainWindow::displayOverrideOpts(int ndx)
 {
-    if (ndx == 2) {
+    if (ndx == 0) {
         override2dChk->setVisible(true);
     } else {
         override2dChk->setVisible(false);
     }
 
-    if (ndx == 3) {
+    if (ndx == 1) {
         override3dChk->setVisible(true);
     } else {
         override3dChk->setVisible(false);
@@ -164,39 +164,9 @@ void MainWindow::goPlot()
     const int plotDensNdx = plotDensCmb->currentIndex();
     const int plotDensity = [&]() {
         switch (plotTypeIndex) {
-        // 3D Mono
-        case 0:
-            switch (plotDensNdx) {
-            case 0:
-                return 200;
-                break;
-            case 1:
-                return 1000;
-                break;
-            case 2:
-            default:
-                return 5000;
-                break;
-            }
-            break;
-        // 3D Color
-        case 1:
-            switch (plotDensNdx) {
-            case 0:
-                return 100;
-                break;
-            case 1:
-                return 500;
-                break;
-            case 2:
-            default:
-                return 2000;
-                break;
-            }
-            break;
         // 2D
-        case 2:
-        case 3:
+        case 0:
+        case 1:
             switch (plotDensNdx) {
             case 0:
                 return 1000;
@@ -219,7 +189,7 @@ void MainWindow::goPlot()
     ClampNegative = chkClampNeg->isChecked();
     ClampPositive = chkClampPos->isChecked();
 
-    if (override2dChk->isChecked() && plotTypeIndex == 2) {
+    if (override2dChk->isChecked() && plotTypeIndex == 0) {
         const PlotSetting2D plotSet{
             enableAAChk->isChecked(),
             forceBucketChk->isChecked(),
@@ -239,7 +209,7 @@ void MainWindow::goPlot()
         d->sc->overrideSettings(plotSet);
     }
 
-    if (plotTypeIndex == 3) {
+    if (plotTypeIndex == 1) {
         PlotSetting2D plotset;
         plotset.multisample3d = multisampleSpn->value();
 

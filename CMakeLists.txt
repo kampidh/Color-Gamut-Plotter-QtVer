@@ -37,8 +37,6 @@ set(PROJECT_SOURCES
         src/mainwindow.cpp
         src/mainwindow.h
         src/mainwindow.ui
-        src/scatter3dchart.h
-        src/scatter3dchart.cpp
         src/scatterdialog.h
         src/scatterdialog.cpp
         src/scatterdialog.ui

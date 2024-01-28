@@ -7,7 +7,6 @@
 #include "scatterdialog.h"
 #include "imageparsersc.h"
 #include "scatter2dchart.h"
-#include "scatter3dchart.h"
 #include "custom3dchart.h"
 
 #include "./gamutplotterconfig.h"
@@ -19,10 +18,6 @@
 
 #include <QApplication>
 #include <QDebug>
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
-using namespace QtDataVisualization;
-#endif
 
 #include <QCheckBox>
 #include <QColorSpace>
@@ -41,6 +36,7 @@ using namespace QtDataVisualization;
 #include <QThread>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QWindow>
 
 #include <QKeyEvent>
 #include <QCloseEvent>
@@ -54,9 +50,7 @@ public:
     QVector3D m_wtpt;
     int m_plotType{0};
     int m_plotDensity{0};
-    // Q3DScatter *m_graph;
     QWidget *m_container;
-    Scatter3dChart *m_3dScatter{nullptr};
     Scatter2dChart *m_2dScatter{nullptr};
     Custom3dChart *m_custom3d{nullptr};
     bool m_is2d{false};
@@ -66,7 +60,6 @@ public:
     PlotSetting2D m_plotSetting;
 
     QVector<ColorPoint> inputImg;
-    // ImageParserSC parsedImg;
 };
 
 ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidget *parent)
@@ -78,7 +71,7 @@ ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidg
     setAttribute(Qt::WA_DeleteOnClose, true);
     setWindowTitle(QStringLiteral("Plotting result"));
 
-    if (plotType == 2) {
+    if (plotType == 0) {
         d->m_is2d = true;
     }
     d->m_fName = fName;
@@ -220,62 +213,27 @@ bool ScatterDialog::startParse()
             }
             layout()->replaceWidget(container, d->m_2dScatter);
             d->m_2dScatter->setFocus();
-            orthogonalViewChk->setVisible(false);
         }
 
         if (!d->m_is2d) {
-            if (d->m_plotType != 3) {
-                if (d->m_plotType == 0) {
-                    if (d->m_plotDensity >= 5000) {
-                        parsedImgInternal.trimImage(200000);
-                    } else if (d->m_plotDensity >= 1000) {
-                        parsedImgInternal.trimImage(100000);
-                    } else {
-                        parsedImgInternal.trimImage(50000);
-                    }
-                } else if (d->m_plotType == 1) {
-                    if (d->m_plotDensity >= 2000) {
-                        parsedImgInternal.trimImage(20000);
-                    } else if (d->m_plotDensity >= 500) {
-                        parsedImgInternal.trimImage(10000);
-                    } else {
-                        parsedImgInternal.trimImage(2000);
-                    }
-                } else {
-                    parsedImgInternal.trimImage(1000);
-                }
-                const bool isSrgb = parsedImgInternal.isMatchSrgb();
-                d->m_3dScatter = new Scatter3dChart(nullptr, windowHandle());
-                d->m_3dScatter->addDataPoints(d->inputImg, outGamut, isSrgb, d->m_plotType);
-                layout()->replaceWidget(container, QWidget::createWindowContainer(d->m_3dScatter));
-
-                if (!d->m_3dScatter->hasContext()) {
-                    QMessageBox msgBox;
-                    msgBox.setText("Couldn't initialize the OpenGL context.");
-                    msgBox.exec();
-                    return false;
-                }
+            rstViewBtn->setVisible(false);
+            if (d->m_plotDensity >= 10000) {
+                parsedImgInternal.trimImage(0);
+            } else if (d->m_plotDensity >= 4000) {
+                parsedImgInternal.trimImage(4000000);
             } else {
-                orthogonalViewChk->setVisible(false);
-                rstViewBtn->setVisible(false);
-                if (d->m_plotDensity >= 10000) {
-                    parsedImgInternal.trimImage(0);
-                } else if (d->m_plotDensity >= 4000) {
-                    parsedImgInternal.trimImage(4000000);
-                } else {
-                    parsedImgInternal.trimImage(400000);
-                }
-                d->m_custom3d = new Custom3dChart(d->m_plotSetting, layout()->widget());
-                d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt, outGamut);
-                if (!d->m_custom3d->checkValidity()) {
-                    QMessageBox msgBox;
-                    msgBox.setText("Couldn't initialize the OpenGL context.");
-                    msgBox.exec();
-                    return false;
-                }
-                layout()->replaceWidget(container, d->m_custom3d);
-                d->m_custom3d->setFocus();
+                parsedImgInternal.trimImage(400000);
             }
+            d->m_custom3d = new Custom3dChart(d->m_plotSetting, layout()->widget());
+            d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt, outGamut);
+            if (!d->m_custom3d->checkValidity()) {
+                QMessageBox msgBox;
+                msgBox.setText("Couldn't initialize the OpenGL context.");
+                msgBox.exec();
+                return false;
+            }
+            layout()->replaceWidget(container, d->m_custom3d);
+            d->m_custom3d->setFocus();
         }
         maxOccString = parsedImgInternal.getMaxOccurence();
     }
@@ -291,9 +249,6 @@ bool ScatterDialog::startParse()
     } else {
         rstViewBtn->setText(QStringLiteral("Reset view"));
     }
-
-    orthogonalViewChk->setChecked(false);
-    orthogonalViewChk->setText("Orthogonal projection");
 
     const QString imLabel = [&]() {
         QString tmp = "<b>File name:</b> " + d->m_fName + "<br><b>Profile name:</b> ";
@@ -314,12 +269,7 @@ bool ScatterDialog::startParse()
     connect(saveImageBtn, &QPushButton::clicked, this, &ScatterDialog::savePlotImage);
     connect(rstWindowBtn, &QPushButton::clicked, this, &ScatterDialog::resetWinDimension);
 
-    if (!d->m_is2d) {
-        if (d->m_plotType != 3) {
-            connect(rstViewBtn, &QPushButton::clicked, d->m_3dScatter, &Scatter3dChart::changePresetCamera);
-            connect(orthogonalViewChk, &QCheckBox::clicked, d->m_3dScatter, &Scatter3dChart::setOrthogonal);
-        }
-    } else {
+    if (d->m_is2d) {
         connect(rstViewBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
     }
 
@@ -373,11 +323,7 @@ void ScatterDialog::savePlotImage()
     QImage out;
 
     if (!d->m_is2d) {
-        if (d->m_plotType != 3) {
-            out = d->m_3dScatter->renderToImage(8);
-        } else {
-            out = d->m_custom3d->takeTheShot();
-        }
+        out = d->m_custom3d->takeTheShot();
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
             out = *d->m_2dScatter->getFullPixmap();
@@ -470,13 +416,6 @@ void ScatterDialog::savePlotImage()
 
 void ScatterDialog::keyPressEvent(QKeyEvent *event)
 {
-    // if (d->m_plotType == 3) {
-    //     // absolute hack :3
-    //     // remove if the proper mouse navigation is implemented there.
-    //     d->m_custom3d->passKeypres(event);
-    //     // return;
-    // }
-    // fullscreen only for 2D since I don't know how to exit 3D fullscreen yet uwu
     if (event->key() == Qt::Key_F11) {
         if (!d->m_isFullscreen) {
             d->m_lastSize = size();

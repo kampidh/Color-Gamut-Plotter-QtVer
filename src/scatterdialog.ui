@@ -47,13 +47,6 @@
        </widget>
       </item>
       <item>
-       <widget class="QCheckBox" name="orthogonalViewChk">
-        <property name="text">
-         <string>Orthogonal view</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
          <widget class="QPushButton" name="rstViewBtn">
