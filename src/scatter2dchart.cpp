@@ -334,6 +334,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
 Scatter2dChart::~Scatter2dChart()
 {
+    qDebug() << "2D plot deleted";
     cancelRender();
     d.reset();
 }

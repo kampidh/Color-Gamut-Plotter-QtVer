@@ -83,6 +83,7 @@ ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidg
 
 ScatterDialog::~ScatterDialog()
 {
+    qDebug() << "Plot deleted";
     // move delete to close event
     // delete d;
 }
@@ -126,6 +127,7 @@ bool ScatterDialog::startParse()
 
             pDial.show();
             QGuiApplication::processEvents();
+            QGuiApplication::processEvents();
 
             JxlReader jxlfile(d->m_fName);
             QMessageBox msg;
@@ -165,6 +167,7 @@ bool ScatterDialog::startParse()
 
             pDial.show();
             QGuiApplication::processEvents();
+            QGuiApplication::processEvents();
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
             QImageReader::setAllocationLimit(512);
@@ -181,12 +184,27 @@ bool ScatterDialog::startParse()
             parsedImgInternal.inputFile(imgs, d->m_plotDensity, &d->inputImg);
         }
 #else
-        const QImage imgs(d->m_fName);
+        QProgressDialog pDial;
+        pDial.setRange(0, 0);
+        pDial.setLabelText("Opening image...");
+        pDial.setModal(true);
+
+        pDial.show();
+        QGuiApplication::processEvents();
+        QGuiApplication::processEvents();
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+        QImageReader::setAllocationLimit(512);
+#endif
+        QImageReader reader(d->m_fName);
+        const QImage imgs = reader.read();
         if (imgs.isNull()) {
             QMessageBox msg;
             msg.warning(this, "Warning", "Invalid or unsupported image format!");
+            pDial.close();
             return false;
         }
+        pDial.close();
         parsedImgInternal.inputFile(imgs, d->m_plotDensity, &d->inputImg);
 #endif
 

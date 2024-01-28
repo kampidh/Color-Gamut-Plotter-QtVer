@@ -23,11 +23,13 @@ public Q_SLOTS:
     void goPlot();
     void openFileName();
     void displayOverrideOpts(int ndx);
+    void getDestroyedPlot(QObject *plt);
 
 private:
-    void dragEnterEvent(QDragEnterEvent *event);
-    void dragMoveEvent(QDragMoveEvent *event);
-    void dropEvent(QDropEvent *event);
+    void closeEvent(QCloseEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
     class Private;
     QScopedPointer<Private> d;

@@ -266,10 +266,11 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
 
 Custom3dChart::~Custom3dChart()
 {
-    makeCurrent();
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    doneCurrent();
-    context()->deleteLater();
+    qDebug() << "3D plot deleted";
+    // makeCurrent();
+    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // doneCurrent();
+    // context()->deleteLater();
     d.reset();
 }
 

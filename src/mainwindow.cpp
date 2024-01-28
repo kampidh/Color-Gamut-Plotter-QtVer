@@ -4,17 +4,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  **/
 
-#include <gamutplotterconfig.h>
-
-#include "./ui_mainwindow.h"
 #include "mainwindow.h"
-#include "qevent.h"
 #include "scatterdialog.h"
 #include "plot_typedefs.h"
 #include "global_variables.h"
 #include "gamutplotterconfig.h"
 
-//#include <QEvent>
+#include "qevent.h"
+
 #include <QDebug>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -34,7 +31,7 @@ bool ClampPositive = false;
 class Q_DECL_HIDDEN MainWindow::Private
 {
 public:
-    ScatterDialog *sc{nullptr};
+    std::vector<ScatterDialog *> scList;
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -87,6 +84,22 @@ MainWindow::~MainWindow()
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 {
     event->accept();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    qDebug() << "closing active plots:" << d->scList.size();
+    for (auto &sc : d->scList) {
+        sc->close();
+    }
+    event->accept();
+}
+
+void MainWindow::getDestroyedPlot(QObject *plt)
+{
+    d->scList.erase(std::remove_if(d->scList.begin(), d->scList.end(), [&](ScatterDialog *sc) {
+        return sc == plt;
+    }), d->scList.end());
 }
 
 void MainWindow::dragMoveEvent(QDragMoveEvent *event)
@@ -184,7 +197,7 @@ void MainWindow::goPlot()
         return 10;
     }();
 
-    d->sc = new ScatterDialog(fileName, plotTypeIndex, plotDensity);
+    ScatterDialog *scd = new ScatterDialog(fileName, plotTypeIndex, plotDensity);
 
     ClampNegative = chkClampNeg->isChecked();
     ClampPositive = chkClampPos->isChecked();
@@ -206,29 +219,33 @@ void MainWindow::goPlot()
             renderScaleSpn->value()
         };
 
-        d->sc->overrideSettings(plotSet);
+        scd->overrideSettings(plotSet);
     }
 
     if (plotTypeIndex == 1) {
-        PlotSetting2D plotset;
-        plotset.multisample3d = multisampleSpn->value();
+        PlotSetting2D plotSet;
+        plotSet.multisample3d = multisampleSpn->value();
 
-        d->sc->overrideSettings(plotset);
+        scd->overrideSettings(plotSet);
     }
 
-    if (!d->sc->startParse()) {
-        delete d->sc;
+    if (!scd->startParse()) {
+        scd->deleteLater();
         plotBtn->setEnabled(true);
         return;
     }
 
     plotBtn->setEnabled(true);
-    d->sc->show();
+    scd->show();
 
     const QScreen *currentWin = window()->windowHandle()->screen();
     const QSize screenSize = currentWin->size();
 
-    d->sc->resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
-    const QPoint midpos(d->sc->frameSize().width() / 2, d->sc->frameSize().height() / 2);
-    d->sc->move(currentWin->geometry().center() - midpos);
+    scd->resize(QSize(screenSize.height() / 1.3, screenSize.height() / 1.25));
+    const QPoint midpos(scd->frameSize().width() / 2, scd->frameSize().height() / 2);
+    scd->move(currentWin->geometry().center() - midpos);
+
+    connect(scd, &ScatterDialog::destroyed, this, &MainWindow::getDestroyedPlot);
+
+    d->scList.push_back(std::move(scd));
 }

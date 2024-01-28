@@ -508,6 +508,7 @@ void ImageParserSC::calculateFromRaw()
 
             trimmedSize = irgbTrim.size();
             qDebug() << "From to" << d->m_rawImageByteSize / sizeof(T) / d->numChannels << irgbTrim.size();
+            irgbTrim.clear();
             {
                 if (std::numeric_limits<T>::is_integer) {
                     d->m_maxOccStr = QString("Most frequent: RGB[%1, %2, %3]:%4 | Total unique: %5")
@@ -623,6 +624,9 @@ void ImageParserSC::calculateFromRaw()
 
             // QByteArray rawTrimXyy;
             // QByteArray trimRgbWithAlpha;
+
+            qDebug() << "XYZ size:" << rawTrimXyz.size() / 1024.0f / 1024.0f << "MiB";
+            qDebug() << "RGB size:" << rawTrimRgb.size() / 1024.0f / 1024.0f << "MiB";
 
             for (quint64 i = 0; i < trimmedSize; i++) {
                 const quint64 bNdx = i * (sizeof(double) * 3);
