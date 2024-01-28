@@ -993,6 +993,14 @@ void Custom3dChart::paintGL()
     pai.setBrush(Qt::transparent);
     pai.drawRect(0,0,1,1);
 
+// Text rendering after native painting is absolutely broken in 5.15 for unknown reasons..
+// using QImage painting will tank performance, but it is what it is for 5.15..
+// So this is a bit of hack to draw the UIs in QImage first and then paint it to the FBO.
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+    QImage uiPix(size() * d->upscaler, QImage::Format_ARGB32);
+    QPainter uiPtr(&uiPix);
+#endif
+
     const QRect calcRect(0, 0, width() * d->upscaler, height() * d->upscaler);
 
     if (d->showLabel) {
@@ -1008,9 +1016,15 @@ void Custom3dChart::paintGL()
         }
 
         d->m_labelFont.setPixelSize(14);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+        uiPtr.setPen(Qt::lightGray);
+        uiPtr.setBrush(QColor(0, 0, 0, 160));
+        uiPtr.setFont(d->m_labelFont);
+#else
         pai.setPen(Qt::lightGray);
         pai.setBrush(QColor(0, 0, 0, 160));
         pai.setFont(d->m_labelFont);
+#endif
 
         const QString fpsS =
             QString(
@@ -1038,24 +1052,40 @@ void Custom3dChart::paintGL()
         QRect boundRect;
         const QMargins lblMargin(8, 8, 8, 8);
         const QMargins lblBorder(5, 5, 5, 5);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+        uiPtr.drawText(calcRect - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fpsS, &boundRect);
+        uiPtr.setPen(Qt::NoPen);
+        boundRect += lblBorder;
+        uiPtr.drawRect(boundRect);
+        uiPtr.setPen(Qt::lightGray);
+        uiPtr.drawText(calcRect - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fpsS);
+#else
         pai.drawText(calcRect - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fpsS, &boundRect);
         pai.setPen(Qt::NoPen);
         boundRect += lblBorder;
         pai.drawRect(boundRect);
         pai.setPen(Qt::lightGray);
         pai.drawText(calcRect - lblMargin, Qt::AlignBottom | Qt::AlignLeft, fpsS);
+#endif
     }
 
     if (d->showHelp) {
         d->m_labelFont.setPixelSize(14);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+        uiPtr.setPen(Qt::lightGray);
+        uiPtr.setBrush(QColor(0, 0, 0, 160));
+        uiPtr.setFont(d->m_labelFont);
+#else
         pai.setPen(Qt::lightGray);
         pai.setBrush(QColor(0, 0, 0, 160));
         pai.setFont(d->m_labelFont);
+#endif
 
         const QString fpsS = QString(
             "(F1): Show/hide this help\n"
             "Note: depth buffer is not used with min alpha < 0.9,\n"
-            "therefore the depth rendering will get glitched.\n"
+            "therefore the depth rendering will get glitched\n"
+            "if depth ordering is disabled.\n"
             "Max blending is useful to contrast the frequent colors.\n"
             "Shader source: %1\n"
             "-------------------\n"
@@ -1082,7 +1112,7 @@ void Custom3dChart::paintGL()
             "(F3): Next plot mode\n"
             "(F4): Cycle draw axis and gamut outline\n"
             "(F5): Cycle ColorChecker display\n"
-            "(F7): Toggle depth ordering (heavy!)\n"
+            "(F7): Toggle depth ordering (may heavy)\n"
             "(F10): Toggle turntable animation\n"
             "(F11): Show fullscreen\n"
             "(F12): Save plot image").arg(d->isShaderFile ? "File" : "Internal");
@@ -1090,13 +1120,27 @@ void Custom3dChart::paintGL()
         QRect boundRect;
         const QMargins lblMargin(8, 8, 8, 8);
         const QMargins lblBorder(5, 5, 5, 5);
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+        uiPtr.drawText(calcRect - lblMargin, Qt::AlignTop | Qt::AlignLeft, fpsS, &boundRect);
+        uiPtr.setPen(Qt::NoPen);
+        boundRect += lblBorder;
+        uiPtr.drawRect(boundRect);
+        uiPtr.setPen(Qt::lightGray);
+        uiPtr.drawText(calcRect - lblMargin, Qt::AlignTop | Qt::AlignLeft, fpsS);
+#else
         pai.drawText(calcRect - lblMargin, Qt::AlignTop | Qt::AlignLeft, fpsS, &boundRect);
         pai.setPen(Qt::NoPen);
         boundRect += lblBorder;
         pai.drawRect(boundRect);
         pai.setPen(Qt::lightGray);
         pai.drawText(calcRect - lblMargin, Qt::AlignTop | Qt::AlignLeft, fpsS);
+#endif
     }
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
+    uiPtr.end();
+    pai.drawImage(0, 0, uiPix);
+#endif
 
     pai.end();
 }

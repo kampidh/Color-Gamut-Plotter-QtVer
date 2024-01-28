@@ -1841,7 +1841,7 @@ void Scatter2dChart::saveSlicesAsImage()
     pDial.show();
 
     for (int i = 0; i <= numSlices; i++) {
-        QCoreApplication::processEvents();
+        QGuiApplication::processEvents();
         if (isCancelled) {
             d->renderSlices = false;
             return;

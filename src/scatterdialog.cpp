@@ -107,7 +107,7 @@ void ScatterDialog::overrideSettings(const PlotSetting2D &plot)
 bool ScatterDialog::startParse()
 {
     imgDetailLbl->setToolTip(QString());
-    QCoreApplication::processEvents();
+    QGuiApplication::processEvents();
 
     QElapsedTimer ti;
     ti.start();
