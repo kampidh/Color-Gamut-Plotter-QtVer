@@ -17,7 +17,8 @@ JxlWriter::JxlWriter()
 
 bool JxlWriter::convert(QImage *img, const QString &filename, const int encEffort)
 {
-    if (img->format() == QImage::Format_ARGB32 || img->format() == QImage::Format_ARGB32_Premultiplied) {
+    if (img->format() == QImage::Format_ARGB32 || img->format() == QImage::Format_ARGB32_Premultiplied
+        || img->format() == QImage::Format_RGB32 || img->format() == QImage::Format_BGR888) {
         img->convertTo(QImage::Format_RGBA8888);
     }
 

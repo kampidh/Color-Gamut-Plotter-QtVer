@@ -13,17 +13,19 @@ public:
     Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent = nullptr);
     ~Custom3dChart();
 
-    void addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint);
+    void addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint, QVector<ImageXYZDouble> &dOutGamut);
     void passKeypres(QKeyEvent *e);
 
     void resetCamera();
     bool checkValidity();
+    QImage takeTheShot();
 
 private slots:
     void changeBgColor();
     void changeMonoColor();
     void copyState();
     void pasteState();
+    void changeUpscaler();
 
 private:
     void initializeGL() override;
@@ -40,6 +42,7 @@ private:
     void doUpdate();
     void doNavigation();
     void reloadShaders();
+    void cycleModes();
 
     class Private;
     Private *const d{nullptr};

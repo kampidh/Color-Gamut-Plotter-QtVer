@@ -38,6 +38,7 @@ using namespace QtDataVisualization;
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QScreen>
+#include <QThread>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -256,6 +257,7 @@ bool ScatterDialog::startParse()
                 }
             } else {
                 orthogonalViewChk->setVisible(false);
+                rstViewBtn->setVisible(false);
                 if (d->m_plotDensity >= 10000) {
                     parsedImgInternal.trimImage(0);
                 } else if (d->m_plotDensity >= 4000) {
@@ -264,7 +266,7 @@ bool ScatterDialog::startParse()
                     parsedImgInternal.trimImage(400000);
                 }
                 d->m_custom3d = new Custom3dChart(d->m_plotSetting, layout()->widget());
-                d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt);
+                d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt, outGamut);
                 if (!d->m_custom3d->checkValidity()) {
                     QMessageBox msgBox;
                     msgBox.setText("Couldn't initialize the OpenGL context.");
@@ -374,11 +376,7 @@ void ScatterDialog::savePlotImage()
         if (d->m_plotType != 3) {
             out = d->m_3dScatter->renderToImage(8);
         } else {
-            // not yet implemented
-            out = d->m_custom3d->grabFramebuffer();
-            // QMessageBox msg;
-            // msg.warning(this, "Error", "Unimplemented for this mode!");
-            // return;
+            out = d->m_custom3d->takeTheShot();
         }
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
@@ -431,24 +429,39 @@ void ScatterDialog::savePlotImage()
         pn.end();
     }
 
+    QMessageBox pre;
+    pre.setText("Saving image...");
+    pre.setStandardButtons(QMessageBox::NoButton);
+    pre.show();
+
+    QGuiApplication::processEvents();
+    QGuiApplication::processEvents();
+
     if (tmpFileName.endsWith(".jxl")) {
 #ifdef HAVE_JPEGXL
         JxlWriter jxlw;
         if (jxlw.convert(&out, tmpFileName)) {
+            pre.close();
+            QGuiApplication::processEvents();
             QMessageBox msg;
             msg.setText("Image saved successfully");
             msg.exec();
         } else {
+            pre.close();
             QMessageBox msg;
             msg.warning(this, "Error", "Image cannot be saved!");
         }
 #endif
     } else {
         if (out.save(tmpFileName)) {
+            pre.close();
+            QGuiApplication::processEvents();
             QMessageBox msg;
             msg.setText("Image saved successfully");
             msg.exec();
         } else {
+            pre.close();
+            QGuiApplication::processEvents();
             QMessageBox msg;
             msg.warning(this, "Error", "Image cannot be saved!");
         }

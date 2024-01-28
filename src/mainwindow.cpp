@@ -12,6 +12,7 @@
 #include "scatterdialog.h"
 #include "plot_typedefs.h"
 #include "global_variables.h"
+#include "gamutplotterconfig.h"
 
 //#include <QEvent>
 #include <QDebug>
@@ -58,6 +59,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(plotBtn, &QPushButton::clicked, this, &MainWindow::goPlot);
     connect(fnameOpenBtn, &QPushButton::clicked, this, &MainWindow::openFileName);
     connect(plotTypeCmb, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::displayOverrideOpts);
+
+    QString lTitle = windowTitle() + " - v" + QString(PROJECT_VERSION);
+    setWindowTitle(lTitle);
 
     QString lFooter = QString("Build using Qt ") + QT_VERSION_STR +
 #ifdef HAVE_JPEGXL

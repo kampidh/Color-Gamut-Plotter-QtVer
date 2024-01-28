@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.0)
 
-project(gamutplotter VERSION 0.1 LANGUAGES CXX)
+project(gamutplotter VERSION 0.2.0 LANGUAGES CXX)
 
 if (POLICY CMP0002)
     cmake_policy(SET CMP0002 NEW)
@@ -20,7 +20,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # only set for static Qt build
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++ -ggdb")
 
 LIST (APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -52,6 +52,8 @@ set(PROJECT_SOURCES
         src/global_variables.h
         src/custom3dchart.h
         src/custom3dchart.cpp
+        src/shaders_gl.h
+        src/helper_funcs.h
 )
 
 # move 3rd party into separate project

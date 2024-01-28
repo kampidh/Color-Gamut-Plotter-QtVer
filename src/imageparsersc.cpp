@@ -324,14 +324,19 @@ void ImageParserSC::calculateFromRaw()
     }();
 
     const cmsCIExyY profileWtpt = [&]() {
-        const double white[3] = {1.0, 1.0, 1.0};
         cmsCIEXYZ bufXYZ;
         cmsCIExyY bufxyY;
-        cmsDoTransform(d->imgtoxyz, &white, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-        if (d->p_wtptXYZ.X == 0 && d->p_wtptXYZ.Y == 0 && d->p_wtptXYZ.Z == 0)
-            d->p_wtptXYZ = bufXYZ;
-        return bufxyY;
+        if (d->p_wtptXYZ.X != 0) {
+            cmsXYZ2xyY(&bufxyY, &d->p_wtptXYZ);
+            return bufxyY;
+        } else {
+            const double white[3] = {1.0, 1.0, 1.0};
+            cmsDoTransform(d->imgtoxyz, &white, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+            if (d->p_wtptXYZ.X == 0 && d->p_wtptXYZ.Y == 0 && d->p_wtptXYZ.Z == 0)
+                d->p_wtptXYZ = bufXYZ;
+            return bufxyY;
+        }
     }();
     d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
@@ -379,6 +384,7 @@ void ImageParserSC::calculateFromRaw()
 
             pDial.show();
             QGuiApplication::processEvents();
+            QGuiApplication::processEvents();
 
             quint64 it = 0;
             quint64 skipAlpha = 0;
@@ -419,10 +425,11 @@ void ImageParserSC::calculateFromRaw()
             pDial.reset();
             pDial.setMinimum(0);
             pDial.setMaximum(irgbTrim.size());
-            pDial.setLabelText("Transferring...");
+            pDial.setLabelText("Processing...");
             pDial.setCancelButtonText("Stop");
 
             pDial.show();
+            QGuiApplication::processEvents();
             QGuiApplication::processEvents();
 
             ImageRGBTyped<T> maxocc;
@@ -439,6 +446,63 @@ void ImageParserSC::calculateFromRaw()
                 }
                 numOcc.append(i.N);
             }
+
+            // {
+            //     std::vector<ImageRGBTyped<T>> vectPixel(irgbTrim.size());
+            //     std::copy(irgbTrim.begin(), irgbTrim.end(), vectPixel.begin());
+            //     std::sort(vectPixel.begin(), vectPixel.end(), [](const ImageRGBTyped<T> &lhs, const ImageRGBTyped<T> &rhs) {
+            //         if (std::numeric_limits<T>::is_integer) {
+            //             // weighted
+            //             // const quint64 in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+            //             // const quint64 out = rhs.R + (2 * rhs.G) + (3 * rhs.B);
+
+
+            //             // uniform, heavy if many dupes
+            //             const quint64 in = lhs.R + lhs.G + lhs.B;
+            //             const quint64 out = rhs.R + rhs.G + rhs.B;
+
+            //             // hash, heavy!
+            //             // const size_t in = std::hash<ImageRGBTyped<T>>{}(lhs);
+            //             // const size_t out = std::hash<ImageRGBTyped<T>>{}(rhs);
+            //             return in < out;
+            //         } else {
+            //             // const double in = lhs.R + (2 * lhs.G) + (3 * lhs.B);
+            //             // const double out = rhs.R + (2 * rhs.G) + (3 * rhs.B);
+            //             const double in = lhs.R + lhs.G + lhs.B;
+            //             const double out = rhs.R + rhs.G + rhs.B;
+            //             // const size_t in = std::hash<ImageRGBTyped<T>>{}(lhs);
+            //             // const size_t out = std::hash<ImageRGBTyped<T>>{}(rhs);
+            //             return in < out;
+            //         }
+            //     });
+
+            //     const int ordPixWidth = std::ceil(std::sqrt(static_cast<float>(irgbTrim.size())));
+            //     QImage ordPix(ordPixWidth, ordPixWidth, QImage::Format_RGBA32FPx4);
+            //     ordPix.fill(Qt::black);
+
+            //     int wPos = 0;
+            //     int hPos = 0;
+
+            //     for (const auto &i : vectPixel) {
+            //         const double r = value<T>(i.R);
+            //         const double g = value<T>(i.G);
+            //         const double b = value<T>(i.B);
+
+            //         QColor pixl(0,0,0);
+            //         pixl.setRedF(r);
+            //         pixl.setGreenF(g);
+            //         pixl.setBlueF(b);
+
+            //         ordPix.setPixelColor(wPos, hPos, pixl);
+            //         wPos++;
+            //         if (wPos >= ordPixWidth) {
+            //             wPos = 0;
+            //             hPos++;
+            //         }
+            //     }
+            //     ordPix.convertTo(QImage::Format_RGBA64);
+            //     ordPix.save("./order.png");
+            // }
 
             d->m_maxOccurence = maxocc.N;
 
@@ -476,6 +540,7 @@ void ImageParserSC::calculateFromRaw()
                 pDial.setCancelButtonText("Stop");
 
                 pDial.show();
+                QGuiApplication::processEvents();
                 QGuiApplication::processEvents();
 
                 rawTrimXyz.resize(rawTrimData.size());
@@ -550,6 +615,7 @@ void ImageParserSC::calculateFromRaw()
 
             pDial.show();
             QGuiApplication::processEvents();
+            QGuiApplication::processEvents();
 
             float maxOccurenceLog = 0.0;
 
@@ -615,7 +681,49 @@ void ImageParserSC::calculateFromRaw()
         }
     }
 
-    if (d->hasColorants) {
+    const bool hasColorantsButDiffer = [&]() {
+        cmsCIExyY bufR;
+        cmsCIExyY bufG;
+        cmsCIExyY bufB;
+
+        cmsXYZ2xyY(&bufR, &d->colorants.Red);
+        cmsXYZ2xyY(&bufG, &d->colorants.Green);
+        cmsXYZ2xyY(&bufB, &d->colorants.Blue);
+
+        cmsCIExyY proR;
+        cmsCIExyY proG;
+        cmsCIExyY proB;
+        {
+            const double rgb[3] = {1.0, 0.0, 0.0};
+            cmsCIEXYZ bufXYZ;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&proR, &bufXYZ);
+        }
+        {
+            const double rgb[3] = {0.0, 1.0, 0.0};
+            cmsCIEXYZ bufXYZ;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&proG, &bufXYZ);
+        }
+        {
+            const double rgb[3] = {0.0, 0.0, 1.0};
+            cmsCIEXYZ bufXYZ;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&proB, &bufXYZ);
+        }
+
+        const double tl = 0.001;
+
+        if (std::fabs(bufR.x - proR.x) < tl && std::fabs(bufR.y - proR.y) < tl && std::fabs(bufR.Y - proR.Y) < tl
+            && std::fabs(bufG.x - proG.x) < tl && std::fabs(bufG.y - proG.y) < tl && std::fabs(bufG.Y - proG.Y) < tl
+            && std::fabs(bufB.x - proB.x) < tl && std::fabs(bufB.y - proB.y) < tl && std::fabs(bufB.Y - proB.Y) < tl) {
+            return false;
+        }
+
+        return true;
+    }();
+
+    if (d->hasColorants && hasColorantsButDiffer) {
         cmsCIExyY bufR;
         cmsCIExyY bufG;
         cmsCIExyY bufB;
@@ -651,38 +759,89 @@ void ImageParserSC::calculateFromRaw()
         }
     } else {
         const int sampleNum = 100;
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < sampleNum; j++) {
-                const double red = [&]() {
-                    if (i == 0)
-                        return static_cast<double>(sampleNum - j) / sampleNum;
-                    if (i == 2)
-                        return static_cast<double>(j) / sampleNum;
-                    return 0.0;
-                }();
-                const double green = [&]() {
-                    if (i == 1)
-                        return static_cast<double>(sampleNum - j) / sampleNum;
-                    if (i == 0)
-                        return static_cast<double>(j) / sampleNum;
-                    return 0.0;
-                }();
-                const double blue = [&]() {
-                    if (i == 2)
-                        return static_cast<double>(sampleNum - j) / sampleNum;
-                    if (i == 1)
-                        return static_cast<double>(j) / sampleNum;
-                    return 0.0;
-                }();
-                const double rgb[3] = {red, green, blue};
-                cmsCIEXYZ bufXYZ;
-                cmsCIExyY bufxyY;
-                cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
-                cmsXYZ2xyY(&bufxyY, &bufXYZ);
 
-                const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
-                d->m_outerGamut.append(output);
-            }
+        // R - Y
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {1.0, secd, 0.0};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
+        }
+
+        // Y - G
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {secd, 1.0, 0.0};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
+        }
+
+        // G - C
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {0.0, 1.0, secd};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
+        }
+
+        // C - B
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {0.0, secd, 1.0};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
+        }
+
+        // B - M
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {secd, 0.0, 1.0};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
+        }
+
+        // M - R
+        for (int i = 0; i < sampleNum; i++) {
+            const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
+
+            const double rgb[3] = {1.0, 0.0, secd};
+            cmsCIEXYZ bufXYZ;
+            cmsCIExyY bufxyY;
+            cmsDoTransform(d->imgtoxyz, &rgb, &bufXYZ, 1);
+            cmsXYZ2xyY(&bufxyY, &bufXYZ);
+
+            const ImageXYZDouble output{bufxyY.x, bufxyY.y, bufxyY.Y};
+            d->m_outerGamut.append(output);
         }
     }
 }
@@ -706,6 +865,7 @@ void ImageParserSC::trimImage(quint64 size)
         pDial.setCancelButtonText("Stop");
 
         pDial.show();
+        QGuiApplication::processEvents();
         QGuiApplication::processEvents();
 
         it = 0;
