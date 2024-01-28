@@ -1900,11 +1900,20 @@ void Custom3dChart::cycleModes()
     case -1: {
         d->modeString = QString("CIE 1931 xyY");
 
+        QVector<QVector3D> imgGamut;
+        QVector<QVector3D> srgbGamut;
+        foreach (const auto &gmt, d->imageGamut) {
+            imgGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? 0.0f : gmt.z()});
+        }
+        foreach (const auto &gmt, d->srgbGamut) {
+            srgbGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? -0.0001f : gmt.z()});
+        }
+
         d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(d->imageGamut.constData(), d->imageGamut.size() * sizeof(QVector3D));
+        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
         d->imageGamutVbo->release();
         d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(d->srgbGamut.constData(), d->srgbGamut.size() * sizeof(QVector3D));
+        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
         d->srgbGamutVbo->release();
         d->spectralLocusVbo->bind();
         d->spectralLocusVbo->allocate(d->spectralLocus.constData(), d->spectralLocus.size() * sizeof(QVector3D));
