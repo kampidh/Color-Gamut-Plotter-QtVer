@@ -1029,20 +1029,20 @@ void Custom3dChart::paintGL()
 
         const QString fpsS =
             QString(
-                "%15 | Colors: %2 | FPS: %1 | Alpha: %3 | Size: %10 (%13-%14) | CC: %17\n"
-                "Yaw: %4 | Pitch: %9 | FOV: %5 | D: %6 | T:[%7:%8:%12] | %11 | Z-order: %16")
-                .arg(QString::number(d->m_fps, 'f', 2),
+                "%15 | Colors:%2 | FPS:%1 | Alpha:%3 | Size:%10(%13-%14) | CC:%17\n"
+                "Y:%4° | P:%9° | FOV:%5 | D:%6 | T:[%7:%8:%12] | Blend:%11 | Z-order:%16")
+                .arg(QString::number(d->m_fps, 'f', 1),
                      (maxPartNum == absolutemax) ? QString("%1(capped)").arg(QString::number(maxPartNum))
                                                  : QString::number(maxPartNum),
                      QString::number(d->minalpha, 'f', 3),
                      QString::number(d->yawAngle, 'f', 2),
-                     d->useOrtho ? QString("ortho") : QString::number(d->fov, 'f', 2),
+                     d->useOrtho ? QString("0°") : (QString::number(d->fov, 'f', 0) + QString("°")),
                      QString::number(d->camDistToTarget, 'f', 3),
                      QString::number(d->targetPos.x(), 'f', 3),
                      QString::number(d->targetPos.y(), 'f', 3),
                      QString::number(d->pitchAngle, 'f', 2),
                      QString::number(d->particleSize, 'f', 1),
-                     d->useMaxBlend ? QString("Max blending") : QString("Alpha blending"),
+                     d->useMaxBlend ? QString("Max") : QString("Alpha"),
                      QString::number(d->targetPos.z() / d->zScale, 'f', 3),
                      d->useVariableSize ? QString("var") : QString("sta"),
                      d->useSmoothParticle ? QString("rnd") : QString("sqr"),
@@ -1191,7 +1191,7 @@ void Custom3dChart::resizeEvent(QResizeEvent *event)
 {
     // resizeGL(width(), height());
     d->useDepthOrder = false;
-    d->m_navTimeout->start(200);
+    d->m_navTimeout->start(500);
     doUpdate();
     QOpenGLWidget::resizeEvent(event);
 }
@@ -1204,11 +1204,19 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
 
     switch (event->key()) {
     case Qt::Key_Minus:
-        d->minalpha -= 0.002f * shiftMultp;
+        d->minalpha -= 0.002f;
         d->minalpha = std::max(0.0f, d->minalpha);
         break;
     case Qt::Key_Equal:
-        d->minalpha += 0.002f * shiftMultp;
+        d->minalpha += 0.002f;
+        d->minalpha = std::min(1.0f, d->minalpha);
+        break;
+    case Qt::Key_Underscore:
+        d->minalpha -= 0.05f;
+        d->minalpha = std::max(0.0f, d->minalpha);
+        break;
+    case Qt::Key_Plus:
+        d->minalpha += 0.05f;
         d->minalpha = std::min(1.0f, d->minalpha);
         break;
     case Qt::Key_BracketLeft:
@@ -1573,7 +1581,10 @@ void Custom3dChart::mouseMoveEvent(QMouseEvent *event)
 void Custom3dChart::mouseReleaseEvent(QMouseEvent *event)
 {
     if (!d->isValid) return;
-    d->useDepthOrder = true;
+
+    if (!d->enableNav && !d->m_timer->isActive()) {
+        d->useDepthOrder = true;
+    }
 
     setCursor(Qt::ArrowCursor);
     d->isMouseHold = false;
