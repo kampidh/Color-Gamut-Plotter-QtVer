@@ -459,7 +459,8 @@ void main()
         } else if (iMode == 12) {
             lms = xyz2cmflms * iXYZ;
         } else if (iMode == 13) {
-            lms = (lms2xyb * (xyz2d65lms * iXYZ)) * 0.5;
+            lms = (lms2xyb * (xyz2d65lms * iXYZ));
+            lms = vec3(lms.x, lms.z, lms.y) * 0.5;
         }
 
         QtVect3D outRgb = QtVect3D(lms.x, lms.y, lms.z);

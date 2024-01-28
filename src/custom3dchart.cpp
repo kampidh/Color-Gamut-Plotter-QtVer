@@ -1895,7 +1895,7 @@ void Custom3dChart::cycleModes()
         break;
     case 13:
         d->modeString = QString("XYB - D65 (0.5x)");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.5f, 0.25f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.25f, 0.5f * d->zScale};
         break;
     case -1: {
         d->modeString = QString("CIE 1931 xyY");
