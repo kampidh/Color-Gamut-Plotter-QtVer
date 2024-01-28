@@ -619,7 +619,7 @@ void ImageParserSC::calculateFromRaw()
 
             float maxOccurenceLog = 0.0;
 
-            maxOccurenceLog = std::log(static_cast<float>(d->m_maxOccurence));
+            maxOccurenceLog = std::log(static_cast<double>(d->m_maxOccurence));
 
             // QByteArray rawTrimXyy;
             // QByteArray trimRgbWithAlpha;
@@ -639,8 +639,9 @@ void ImageParserSC::calculateFromRaw()
                     if (d->m_maxOccurence == 1) {
                         return 1.0f;
                     }
-                    return std::min(std::max(std::log(static_cast<float>(numOcc.at(i))) / maxOccurenceLog, 0.0f),
-                                    1.0f);
+                    return static_cast<float>(
+                        std::min(std::max(std::log(static_cast<double>(numOcc.at(i))) / maxOccurenceLog, (double)0.0),
+                                 (double)1.0));
                 }();
 
                 const ImageRGBFloat irgba = [&]() {
