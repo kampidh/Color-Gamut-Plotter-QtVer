@@ -11,6 +11,7 @@
 #include "plot_typedefs.h"
 
 #include <QWidget>
+#include <QScopedPointer>
 
 class ScatterDialog : public QWidget, public Ui::ScatterDialog
 {
@@ -33,7 +34,7 @@ protected:
 
 private:
     class Private;
-    Private *const d{nullptr};
+    QScopedPointer<Private> d;
 };
 
 #endif // SCATTERDIALOG_H

@@ -50,9 +50,9 @@ public:
     QVector3D m_wtpt;
     int m_plotType{0};
     int m_plotDensity{0};
-    QWidget *m_container;
-    Scatter2dChart *m_2dScatter{nullptr};
-    Custom3dChart *m_custom3d{nullptr};
+    QScopedPointer<QWidget> m_container;
+    QScopedPointer<Scatter2dChart> m_2dScatter;
+    QScopedPointer<Custom3dChart> m_custom3d;
     bool m_is2d{false};
     bool m_isFullscreen{false};
     bool m_overrideSettings{false};
@@ -78,8 +78,6 @@ ScatterDialog::ScatterDialog(QString fName, int plotType, int plotDensity, QWidg
     d->m_plotType = plotType;
     d->m_plotDensity = plotDensity;
 
-    setAttribute(Qt::WA_DeleteOnClose);
-
     qApp->installEventFilter(this);
 }
 
@@ -95,7 +93,7 @@ void ScatterDialog::closeEvent(QCloseEvent *event)
         d->m_2dScatter->cancelRender();
     }
     event->accept();
-    delete d;
+    d.reset();
 }
 
 void ScatterDialog::overrideSettings(const PlotSetting2D &plot)
@@ -202,7 +200,7 @@ bool ScatterDialog::startParse()
 
         if (d->m_is2d) {
             parsedImgInternal.trimImage();
-            d->m_2dScatter = new Scatter2dChart(layout()->widget());
+            d->m_2dScatter.reset(new Scatter2dChart(layout()->widget()));
             if (d->m_overrideSettings) {
                 d->m_2dScatter->overrideSettings(d->m_plotSetting);
             }
@@ -211,7 +209,7 @@ bool ScatterDialog::startParse()
             if (QByteArray *cs = parsedImgInternal.getRawICC()) {
                 d->m_2dScatter->addColorSpace(*cs);
             }
-            layout()->replaceWidget(container, d->m_2dScatter);
+            layout()->replaceWidget(container, d->m_2dScatter.get());
             d->m_2dScatter->setFocus();
         }
 
@@ -224,7 +222,7 @@ bool ScatterDialog::startParse()
             } else {
                 parsedImgInternal.trimImage(400000);
             }
-            d->m_custom3d = new Custom3dChart(d->m_plotSetting, layout()->widget());
+            d->m_custom3d.reset(new Custom3dChart(d->m_plotSetting, layout()->widget()));
             d->m_custom3d->addDataPoints(d->inputImg, d->m_wtpt, outGamut);
             if (!d->m_custom3d->checkValidity()) {
                 QMessageBox msgBox;
@@ -232,7 +230,7 @@ bool ScatterDialog::startParse()
                 msgBox.exec();
                 return false;
             }
-            layout()->replaceWidget(container, d->m_custom3d);
+            layout()->replaceWidget(container, d->m_custom3d.get());
             d->m_custom3d->setFocus();
         }
         maxOccString = parsedImgInternal.getMaxOccurence();
@@ -270,7 +268,7 @@ bool ScatterDialog::startParse()
     connect(rstWindowBtn, &QPushButton::clicked, this, &ScatterDialog::resetWinDimension);
 
     if (d->m_is2d) {
-        connect(rstViewBtn, &QPushButton::clicked, d->m_2dScatter, &Scatter2dChart::resetCamera);
+        connect(rstViewBtn, &QPushButton::clicked, d->m_2dScatter.get(), &Scatter2dChart::resetCamera);
     }
 
     layout()->setContentsMargins(9, 9, 9, 9);

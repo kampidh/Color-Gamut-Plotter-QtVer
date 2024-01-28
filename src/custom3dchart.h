@@ -3,6 +3,7 @@
 
 #include <QOpenGLWidget>
 #include <QKeyEvent>
+#include <QScopedPointer>
 
 #include "plot_typedefs.h"
 
@@ -45,7 +46,7 @@ private:
     void cycleModes();
 
     class Private;
-    Private *const d{nullptr};
+    QScopedPointer<Private> d;
 };
 
 #endif // CUSTOM3DCHART_H

@@ -81,7 +81,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    delete d;
+    d.reset();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)

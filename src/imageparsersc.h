@@ -9,6 +9,7 @@
 
 #include <QImage>
 #include <QVector2D>
+#include <QScopedPointer>
 #include <lcms2.h>
 
 #include "imageformats.h"
@@ -41,7 +42,7 @@ private:
     void iccPutTransforms();
 
     class Private;
-    Private* const d {nullptr};
+    QScopedPointer<Private> d;
 };
 
 #endif // IMAGEPARSERSC_H

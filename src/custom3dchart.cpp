@@ -85,8 +85,8 @@ public:
 
     quint32 framesRendered{0};
     quint64 frametime{0};
-    QTimer *m_timer{nullptr};
-    QTimer *m_navTimeout{nullptr};
+    QScopedPointer<QTimer> m_timer;
+    QScopedPointer<QTimer> m_navTimeout{nullptr};
     QElapsedTimer elTim;
     float m_fps{0.0};
     float frameDelay{0.0};
@@ -146,31 +146,31 @@ public:
     bool nUp{false};
     bool nDown{false};
 
-    QOpenGLShaderProgram *scatterPrg;
-    QOpenGLBuffer *scatterPosVbo;
-    QOpenGLBuffer *scatterColVbo;
-    QOpenGLBuffer *scatterIdxVbo;
-    QOpenGLVertexArrayObject *scatterVao;
+    QScopedPointer<QOpenGLShaderProgram> scatterPrg;
+    QScopedPointer<QOpenGLBuffer> scatterPosVbo;
+    QScopedPointer<QOpenGLBuffer> scatterColVbo;
+    QScopedPointer<QOpenGLBuffer> scatterIdxVbo;
+    QScopedPointer<QOpenGLVertexArrayObject> scatterVao;
     bool isValid{true};
     bool isShaderFile{true};
 
-    QOpenGLShaderProgram *computePrg;
-    QOpenGLBuffer *computeOut;
-    QOpenGLBuffer *computeZBuffer;
+    QScopedPointer<QOpenGLShaderProgram> computePrg;
+    QScopedPointer<QOpenGLBuffer> computeOut;
+    QScopedPointer<QOpenGLBuffer> computeZBuffer;
 
-    QOpenGLShaderProgram *convertPrg;
-    QOpenGLBuffer *scatterPosVboCvt;
+    QScopedPointer<QOpenGLShaderProgram> convertPrg;
+    QScopedPointer<QOpenGLBuffer> scatterPosVboCvt;
 
-    QOpenGLShaderProgram *axisPrg;
-    QOpenGLBuffer *axisPosVbo;
-    QOpenGLBuffer *axisTicksVbo;
-    QOpenGLBuffer *axisGridsVbo;
-    QOpenGLBuffer *spectralLocusVbo;
-    QOpenGLBuffer *imageGamutVbo;
-    QOpenGLBuffer *srgbGamutVbo;
-    QOpenGLBuffer *adaptedColorChecker76Vbo;
-    QOpenGLBuffer *adaptedColorCheckerVbo;
-    QOpenGLBuffer *adaptedColorCheckerNewVbo;
+    QScopedPointer<QOpenGLShaderProgram> axisPrg;
+    QScopedPointer<QOpenGLBuffer> axisPosVbo;
+    QScopedPointer<QOpenGLBuffer> axisTicksVbo;
+    QScopedPointer<QOpenGLBuffer> axisGridsVbo;
+    QScopedPointer<QOpenGLBuffer> spectralLocusVbo;
+    QScopedPointer<QOpenGLBuffer> imageGamutVbo;
+    QScopedPointer<QOpenGLBuffer> srgbGamutVbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorChecker76Vbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorCheckerVbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVbo;
 };
 
 QVector<QVector3D> crossAtPos(const QVector3D &pos, float len)
@@ -247,16 +247,16 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
     // d->srgbGamut.append(QVector3D{0.1500f, 0.0600f, -0.001f});
     d->srgbGamut.append(getSrgbGamutxyy());
 
-    d->m_timer = new QTimer(this);
-    d->m_navTimeout = new QTimer(this);
+    d->m_timer.reset(new QTimer(this));
+    d->m_navTimeout.reset(new QTimer(this));
     d->m_navTimeout->setSingleShot(true);
     d->elTim.start();
 
-    connect(d->m_timer, &QTimer::timeout, this, [&]() {
+    connect(d->m_timer.get(), &QTimer::timeout, this, [&]() {
         doUpdate();
     });
 
-    connect(d->m_navTimeout, &QTimer::timeout, this, [&]() {
+    connect(d->m_navTimeout.get(), &QTimer::timeout, this, [&]() {
         if (!d->enableNav && !d->isMouseHold && !d->m_timer->isActive()) {
             d->useDepthOrder = true;
         }
@@ -270,7 +270,7 @@ Custom3dChart::~Custom3dChart()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     doneCurrent();
     context()->deleteLater();
-    delete d;
+    d.reset();
 }
 
 void Custom3dChart::initializeGL()
@@ -289,7 +289,7 @@ void Custom3dChart::initializeGL()
      * --------------------------------------------------
      */
 
-    d->scatterPrg = new QOpenGLShaderProgram(context());
+    d->scatterPrg.reset(new QOpenGLShaderProgram(context()));
     d->scatterPrg->create();
 
     reloadShaders();
@@ -303,19 +303,19 @@ void Custom3dChart::initializeGL()
     d->scatterPrg->bind();
 
     // main position VBO storage, this one in xyY format
-    d->scatterPosVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->scatterPosVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->scatterPosVbo->create();
     d->scatterPosVbo->bind();
     d->scatterPosVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
     d->scatterPosVbo->allocate(d->vecPosData.constData(), d->vecPosData.size() * sizeof(QVector3D));
 
     // VAO for main program
-    d->scatterVao = new QOpenGLVertexArrayObject(context());
+    d->scatterVao.reset(new QOpenGLVertexArrayObject(context()));
     d->scatterVao->create();
     d->scatterVao->bind();
 
     // secondary position VBO for main program, this one will change depends on plot mode
-    d->scatterPosVboCvt = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->scatterPosVboCvt.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->scatterPosVboCvt->create();
     d->scatterPosVboCvt->bind();
     d->scatterPosVboCvt->setUsagePattern(QOpenGLBuffer::DynamicDraw);
@@ -324,7 +324,7 @@ void Custom3dChart::initializeGL()
     d->scatterPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
 
     // color VBO for main program
-    d->scatterColVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->scatterColVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->scatterColVbo->create();
     d->scatterColVbo->bind();
     d->scatterColVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
@@ -348,13 +348,13 @@ void Custom3dChart::initializeGL()
      */
 
     // position index VBO
-    d->scatterIdxVbo = new QOpenGLBuffer(QOpenGLBuffer::IndexBuffer);
+    d->scatterIdxVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::IndexBuffer));
     d->scatterIdxVbo->create();
     d->scatterIdxVbo->bind();
     d->scatterIdxVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->scatterIdxVbo->allocate(d->vecDataOrder.constData(), d->vecDataOrder.size() * sizeof(uint32_t));
 
-    d->computePrg = new QOpenGLShaderProgram(context());
+    d->computePrg.reset(new QOpenGLShaderProgram(context()));
     d->computePrg->create();
     d->computePrg->addShaderFromSourceCode(QOpenGLShader::Compute, compShader);
     // d->computePrg->link();
@@ -370,7 +370,7 @@ void Custom3dChart::initializeGL()
     ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, d->scatterPosVboCvt->bufferId());
 
     // output position VBO to be used for main program
-    d->computeOut = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->computeOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->computeOut->create();
     d->computeOut->bind();
     ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, d->computeOut->bufferId());
@@ -379,7 +379,7 @@ void Custom3dChart::initializeGL()
 
     // separate Z buffer only VBO for sorting, otherwise the memory mapping and sorting will be tanked
     // if output buffer is used (vec4 object vs single float)
-    d->computeZBuffer = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->computeZBuffer.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->computeZBuffer->create();
     d->computeZBuffer->bind();
     ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, d->computeZBuffer->bufferId());
@@ -396,7 +396,7 @@ void Custom3dChart::initializeGL()
      * --------------------------------------------------
      */
 
-    d->axisPrg = new QOpenGLShaderProgram(context());
+    d->axisPrg.reset(new QOpenGLShaderProgram(context()));
     d->axisPrg->create();
     d->axisPrg->addShaderFromSourceCode(QOpenGLShader::Vertex, monoVertShader);
     d->axisPrg->addShaderFromSourceCode(QOpenGLShader::Fragment, monoFragShader);
@@ -407,28 +407,28 @@ void Custom3dChart::initializeGL()
     }
 
     // main axis position VBO
-    d->axisPosVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->axisPosVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->axisPosVbo->create();
     d->axisPosVbo->bind();
     d->axisPosVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
     d->axisPosVbo->allocate(&mainAxes, sizeof(mainAxes));
 
     // axis ticks position VBO
-    d->axisTicksVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->axisTicksVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->axisTicksVbo->create();
     d->axisTicksVbo->bind();
     d->axisTicksVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
     d->axisTicksVbo->allocate(d->axisTicks.constData(), d->axisTicks.size() * sizeof(QVector3D));
 
     // axis grids position VBO
-    d->axisGridsVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->axisGridsVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->axisGridsVbo->create();
     d->axisGridsVbo->bind();
     d->axisGridsVbo->setUsagePattern(QOpenGLBuffer::StaticDraw);
     d->axisGridsVbo->allocate(d->axisGrids.constData(), d->axisGrids.size() * sizeof(QVector3D));
 
     // spectral locus position VBO
-    d->spectralLocusVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->spectralLocusVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->spectralLocusVbo->create();
     d->spectralLocusVbo->bind();
     d->spectralLocusVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
@@ -444,14 +444,14 @@ void Custom3dChart::initializeGL()
     }
 
     // image gamut position VBO
-    d->imageGamutVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->imageGamutVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->imageGamutVbo->create();
     d->imageGamutVbo->bind();
     d->imageGamutVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
 
     // sRGB gamut position VBO
-    d->srgbGamutVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->srgbGamutVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->srgbGamutVbo->create();
     d->srgbGamutVbo->bind();
     d->srgbGamutVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
@@ -468,21 +468,21 @@ void Custom3dChart::initializeGL()
     }
 
     // ColorChecker76
-    d->adaptedColorChecker76Vbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->adaptedColorChecker76Vbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorChecker76Vbo->create();
     d->adaptedColorChecker76Vbo->bind();
     d->adaptedColorChecker76Vbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
 
     // ColorCheckerOld
-    d->adaptedColorCheckerVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->adaptedColorCheckerVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorCheckerVbo->create();
     d->adaptedColorCheckerVbo->bind();
     d->adaptedColorCheckerVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
 
     // ColorCheckerNew
-    d->adaptedColorCheckerNewVbo = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    d->adaptedColorCheckerNewVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorCheckerNewVbo->create();
     d->adaptedColorCheckerNewVbo->bind();
     d->adaptedColorCheckerNewVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
@@ -494,7 +494,7 @@ void Custom3dChart::initializeGL()
      * --------------------------------------------------
      */
 
-    d->convertPrg = new QOpenGLShaderProgram(context());
+    d->convertPrg.reset(new QOpenGLShaderProgram(context()));
     d->convertPrg->create();
     d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, conversionShader);
     if (!d->convertPrg->link()) {

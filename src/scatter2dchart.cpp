@@ -113,7 +113,7 @@ public:
     QPoint m_lastPos{};
     QPointF m_lastCenter{};
     int m_dArrayIterSize = 1;
-    QTimer *m_scrollTimer;
+    QScopedPointer<QTimer> m_scrollTimer;
     QElapsedTimer m_renderTimer;
     QFont m_labelFont;
     QColor m_bgColor;
@@ -130,32 +130,32 @@ public:
     QVector<cmsCIExyY> m_adaptedColorCheckerNew;
     int m_idealThrCount = 0;
 
-    QAction *setZoom;
-    QAction *setOrigin;
-    QAction *copyOrigAndZoom;
-    QAction *pasteOrigAndZoom;
-    QAction *drawLabels;
-    QAction *drawGrids;
-    QAction *drawSpectralLine;
-    QAction *drawRulers;
-    QAction *drawSrgbGamut;
-    QAction *drawImgGamut;
-    QAction *drawMacAdamEllipses;
-    QAction *drawColorCheckerPoints;
-    QAction *drawColorCheckerPointsOld;
-    QAction *drawColorCheckerPoints76;
-    QAction *drawBlackbodyLocus;
-    QAction *setStaticDownscale;
-    QAction *setAlpha;
-    QAction *setAntiAliasing;
-    QAction *setParticleSize;
-    QAction *setPixmapSize;
-    QAction *setBgColor;
-    QAction *saveSlicesAsImage;
-    QAction *drawStats;
-    QAction *use16Bit;
-    QAction *drawBucketVis;
-    QAction *forceBucketRendering;
+    QScopedPointer<QAction> setZoom;
+    QScopedPointer<QAction> setOrigin;
+    QScopedPointer<QAction> copyOrigAndZoom;
+    QScopedPointer<QAction> pasteOrigAndZoom;
+    QScopedPointer<QAction> drawLabels;
+    QScopedPointer<QAction> drawGrids;
+    QScopedPointer<QAction> drawSpectralLine;
+    QScopedPointer<QAction> drawRulers;
+    QScopedPointer<QAction> drawSrgbGamut;
+    QScopedPointer<QAction> drawImgGamut;
+    QScopedPointer<QAction> drawMacAdamEllipses;
+    QScopedPointer<QAction> drawColorCheckerPoints;
+    QScopedPointer<QAction> drawColorCheckerPointsOld;
+    QScopedPointer<QAction> drawColorCheckerPoints76;
+    QScopedPointer<QAction> drawBlackbodyLocus;
+    QScopedPointer<QAction> setStaticDownscale;
+    QScopedPointer<QAction> setAlpha;
+    QScopedPointer<QAction> setAntiAliasing;
+    QScopedPointer<QAction> setParticleSize;
+    QScopedPointer<QAction> setPixmapSize;
+    QScopedPointer<QAction> setBgColor;
+    QScopedPointer<QAction> saveSlicesAsImage;
+    QScopedPointer<QAction> drawStats;
+    QScopedPointer<QAction> use16Bit;
+    QScopedPointer<QAction> drawBucketVis;
+    QScopedPointer<QAction> forceBucketRendering;
 
     QFutureWatcher<QPair<QImage, QRect>> m_future;
     QFutureWatcher<QVector<QPair<QVector<ColorPoint *>, QRect>>> m_futureData;
@@ -188,9 +188,9 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
     // setFocusPolicy(Qt::ClickFocus);
 
     // prepare timer for downscaling
-    d->m_scrollTimer = new QTimer(this);
+    d->m_scrollTimer.reset(new QTimer(this));
     d->m_scrollTimer->setSingleShot(true);
-    connect(d->m_scrollTimer, &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
+    connect(d->m_scrollTimer.get(), &QTimer::timeout, this, &Scatter2dChart::whenScrollTimerEnds);
 
     // reserved soon
 #if QT_VERSION < QT_VERSION_CHECK(6, 2, 0)
@@ -207,119 +207,119 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 
     d->m_clipb = QApplication::clipboard();
 
-    d->setZoom = new QAction("Set zoom...");
-    connect(d->setZoom, &QAction::triggered, this, &Scatter2dChart::changeZoom);
+    d->setZoom.reset(new QAction("Set zoom..."));
+    connect(d->setZoom.get(), &QAction::triggered, this, &Scatter2dChart::changeZoom);
 
-    d->setOrigin = new QAction("Set center...");
-    connect(d->setOrigin, &QAction::triggered, this, &Scatter2dChart::changeOrigin);
+    d->setOrigin.reset(new QAction("Set center..."));
+    connect(d->setOrigin.get(), &QAction::triggered, this, &Scatter2dChart::changeOrigin);
 
-    d->copyOrigAndZoom = new QAction("Copy plot state");
-    connect(d->copyOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::copyOrigAndZoom);
+    d->copyOrigAndZoom.reset(new QAction("Copy plot state"));
+    connect(d->copyOrigAndZoom.get(), &QAction::triggered, this, &Scatter2dChart::copyOrigAndZoom);
 
-    d->pasteOrigAndZoom = new QAction("Paste plot state");
-    connect(d->pasteOrigAndZoom, &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
+    d->pasteOrigAndZoom.reset(new QAction("Paste plot state"));
+    connect(d->pasteOrigAndZoom.get(), &QAction::triggered, this, &Scatter2dChart::pasteOrigAndZoom);
 
-    d->drawLabels = new QAction("Statistics");
+    d->drawLabels.reset(new QAction("Statistics"));
     d->drawLabels->setCheckable(true);
     d->drawLabels->setChecked(d->enableLabels);
-    connect(d->drawLabels, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawLabels.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawGrids = new QAction("Grids");
+    d->drawGrids.reset(new QAction("Grids"));
     d->drawGrids->setCheckable(true);
     d->drawGrids->setChecked(d->enableGrids);
-    connect(d->drawGrids, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawGrids.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawSpectralLine = new QAction("Spectral locus");
+    d->drawSpectralLine.reset(new QAction("Spectral locus"));
     d->drawSpectralLine->setCheckable(true);
     d->drawSpectralLine->setChecked(d->enableSpectralLine);
-    connect(d->drawSpectralLine, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawSpectralLine.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawRulers = new QAction("Rulers");
+    d->drawRulers.reset(new QAction("Rulers"));
     d->drawRulers->setCheckable(true);
     d->drawRulers->setChecked(d->enableRulers);
-    connect(d->drawRulers, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawRulers.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawSrgbGamut = new QAction("sRGB gamut");
+    d->drawSrgbGamut.reset(new QAction("sRGB gamut"));
     d->drawSrgbGamut->setCheckable(true);
     d->drawSrgbGamut->setChecked(d->enableSrgbGamut);
-    connect(d->drawSrgbGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawSrgbGamut.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawImgGamut = new QAction("Image gamut");
+    d->drawImgGamut.reset(new QAction("Image gamut"));
     d->drawImgGamut->setCheckable(true);
     d->drawImgGamut->setChecked(d->enableImgGamut);
-    connect(d->drawImgGamut, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawImgGamut.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawMacAdamEllipses = new QAction("MacAdam ellipses");
+    d->drawMacAdamEllipses.reset(new QAction("MacAdam ellipses"));
     d->drawMacAdamEllipses->setToolTip("Draw in both normal, and 10x size as depicted in MacAdam's paper.");
     d->drawMacAdamEllipses->setCheckable(true);
     d->drawMacAdamEllipses->setChecked(d->enableMacAdamEllipses);
-    connect(d->drawMacAdamEllipses, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawMacAdamEllipses.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawColorCheckerPoints = new QAction("ColorChecker (After Nov 2014)");
+    d->drawColorCheckerPoints.reset(new QAction("ColorChecker (After Nov 2014)"));
     d->drawColorCheckerPoints->setCheckable(true);
     d->drawColorCheckerPoints->setChecked(d->enableColorCheckerPoints);
-    connect(d->drawColorCheckerPoints, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawColorCheckerPoints.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawColorCheckerPointsOld = new QAction("ColorChecker (Before Nov 2014)");
+    d->drawColorCheckerPointsOld.reset(new QAction("ColorChecker (Before Nov 2014)"));
     d->drawColorCheckerPointsOld->setCheckable(true);
     d->drawColorCheckerPointsOld->setChecked(d->enableColorCheckerPointsOld);
-    connect(d->drawColorCheckerPointsOld, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawColorCheckerPointsOld.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawColorCheckerPoints76 = new QAction("ColorChecker (Classic 1976)");
+    d->drawColorCheckerPoints76.reset(new QAction("ColorChecker (Classic 1976)"));
     d->drawColorCheckerPoints76->setCheckable(true);
     d->drawColorCheckerPoints76->setChecked(d->enableColorCheckerPoints76);
-    connect(d->drawColorCheckerPoints76, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawColorCheckerPoints76.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawBlackbodyLocus = new QAction("Blackbody and Daylight locus");
+    d->drawBlackbodyLocus.reset(new QAction("Blackbody and Daylight locus"));
     d->drawBlackbodyLocus->setCheckable(true);
     d->drawBlackbodyLocus->setChecked(d->enableBlackbodyLocus);
-    connect(d->drawBlackbodyLocus, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawBlackbodyLocus.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->setStaticDownscale = new QAction("Disable dynamic panning");
+    d->setStaticDownscale.reset(new QAction("Disable dynamic panning"));
     d->setStaticDownscale->setCheckable(true);
     d->setStaticDownscale->setChecked(d->enableStaticDownscale);
-    connect(d->setStaticDownscale, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->setStaticDownscale.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->setAntiAliasing = new QAction("Enable AntiAliasing (slow!)");
+    d->setAntiAliasing.reset(new QAction("Enable AntiAliasing (slow!)"));
     d->setAntiAliasing->setToolTip("Only use for final render, as it only have very small impact in visual quality.");
     d->setAntiAliasing->setCheckable(true);
     d->setAntiAliasing->setChecked(d->enableAA);
-    connect(d->setAntiAliasing, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->setAntiAliasing.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->setParticleSize = new QAction("Set particle size...");
-    connect(d->setParticleSize, &QAction::triggered, this, &Scatter2dChart::changeParticleSize);
+    d->setParticleSize.reset(new QAction("Set particle size..."));
+    connect(d->setParticleSize.get(), &QAction::triggered, this, &Scatter2dChart::changeParticleSize);
 
-    d->setPixmapSize = new QAction("Set render scaling...");
-    connect(d->setPixmapSize, &QAction::triggered, this, &Scatter2dChart::changePixmapSize);
+    d->setPixmapSize.reset(new QAction("Set render scaling..."));
+    connect(d->setPixmapSize.get(), &QAction::triggered, this, &Scatter2dChart::changePixmapSize);
 
-    d->setAlpha = new QAction("Set alpha / brightness...");
-    connect(d->setAlpha, &QAction::triggered, this, &Scatter2dChart::changeAlpha);
+    d->setAlpha.reset(new QAction("Set alpha / brightness..."));
+    connect(d->setAlpha.get(), &QAction::triggered, this, &Scatter2dChart::changeAlpha);
 
-    d->setBgColor = new QAction("Set background color...");
-    connect(d->setBgColor, &QAction::triggered, this, &Scatter2dChart::changeBgColor);
+    d->setBgColor.reset(new QAction("Set background color..."));
+    connect(d->setBgColor.get(), &QAction::triggered, this, &Scatter2dChart::changeBgColor);
 
-    d->saveSlicesAsImage = new QAction("Save Y slices as image...");
-    connect(d->saveSlicesAsImage, &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
+    d->saveSlicesAsImage.reset(new QAction("Save Y slices as image..."));
+    connect(d->saveSlicesAsImage.get(), &QAction::triggered, this, &Scatter2dChart::saveSlicesAsImage);
 
-    d->drawStats = new QAction("Show extras on statistics");
+    d->drawStats.reset(new QAction("Show extras on statistics"));
     d->drawStats->setCheckable(true);
     d->drawStats->setChecked(d->enableStats);
-    connect(d->drawStats, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawStats.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->use16Bit = new QAction("16 bits per channel plot");
+    d->use16Bit.reset(new QAction("16 bits per channel plot"));
     d->use16Bit->setCheckable(true);
     d->use16Bit->setChecked(d->enable16Bit);
-    connect(d->use16Bit, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->use16Bit.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->drawBucketVis = new QAction("Bucket render visualization");
+    d->drawBucketVis.reset(new QAction("Bucket render visualization"));
     d->drawBucketVis->setCheckable(true);
     d->drawBucketVis->setChecked(d->enableBucketVis);
-    connect(d->drawBucketVis, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->drawBucketVis.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
-    d->forceBucketRendering = new QAction("Always use bucket rendering");
+    d->forceBucketRendering.reset(new QAction("Always use bucket rendering"));
     d->forceBucketRendering->setCheckable(true);
     d->forceBucketRendering->setChecked(d->enableForceBucketRendering);
-    connect(d->forceBucketRendering, &QAction::triggered, this, &Scatter2dChart::changeProperties);
+    connect(d->forceBucketRendering.get(), &QAction::triggered, this, &Scatter2dChart::changeProperties);
 
     if (QThread::idealThreadCount() > 1) {
         d->m_idealThrCount = QThread::idealThreadCount();
@@ -335,7 +335,7 @@ Scatter2dChart::Scatter2dChart(QWidget *parent)
 Scatter2dChart::~Scatter2dChart()
 {
     cancelRender();
-    delete d;
+    d.reset();
 }
 
 void Scatter2dChart::overrideSettings(PlotSetting2D &plot)
@@ -2021,47 +2021,47 @@ void Scatter2dChart::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(sizePos);
 
     menu.addSeparator();
-    menu.addAction(d->setZoom);
-    menu.addAction(d->setOrigin);
+    menu.addAction(d->setZoom.get());
+    menu.addAction(d->setOrigin.get());
 
     menu.addSeparator();
-    menu.addAction(d->copyOrigAndZoom);
-    menu.addAction(d->pasteOrigAndZoom);
+    menu.addAction(d->copyOrigAndZoom.get());
+    menu.addAction(d->pasteOrigAndZoom.get());
 
     menu.addSeparator();
     showOverlays.setTitle("Overlays");
     menu.addMenu(&showOverlays);
-    showOverlays.addAction(d->drawLabels);
-    showOverlays.addAction(d->drawGrids);
-    showOverlays.addAction(d->drawRulers);
+    showOverlays.addAction(d->drawLabels.get());
+    showOverlays.addAction(d->drawGrids.get());
+    showOverlays.addAction(d->drawRulers.get());
     showOverlays.addSeparator();
-    showOverlays.addAction(d->drawSpectralLine);
-    showOverlays.addAction(d->drawSrgbGamut);
-    showOverlays.addAction(d->drawImgGamut);
-    showOverlays.addAction(d->drawMacAdamEllipses);
-    showOverlays.addAction(d->drawBlackbodyLocus);
+    showOverlays.addAction(d->drawSpectralLine.get());
+    showOverlays.addAction(d->drawSrgbGamut.get());
+    showOverlays.addAction(d->drawImgGamut.get());
+    showOverlays.addAction(d->drawMacAdamEllipses.get());
+    showOverlays.addAction(d->drawBlackbodyLocus.get());
     showOverlays.addSeparator();
-    showOverlays.addAction(d->drawColorCheckerPoints);
-    showOverlays.addAction(d->drawColorCheckerPointsOld);
-    showOverlays.addAction(d->drawColorCheckerPoints76);
+    showOverlays.addAction(d->drawColorCheckerPoints.get());
+    showOverlays.addAction(d->drawColorCheckerPointsOld.get());
+    showOverlays.addAction(d->drawColorCheckerPoints76.get());
 
     menu.addSeparator();
-    menu.addAction(d->setAntiAliasing);
-    menu.addAction(d->use16Bit);
-    menu.addAction(d->setAlpha);
-    menu.addAction(d->setParticleSize);
-    menu.addAction(d->setBgColor);
+    menu.addAction(d->setAntiAliasing.get());
+    menu.addAction(d->use16Bit.get());
+    menu.addAction(d->setAlpha.get());
+    menu.addAction(d->setParticleSize.get());
+    menu.addAction(d->setBgColor.get());
 
     extra.setTitle("Extra options");
     menu.addMenu(&extra);
-    extra.addAction(d->drawStats);
-    extra.addAction(d->setStaticDownscale);
+    extra.addAction(d->drawStats.get());
+    extra.addAction(d->setStaticDownscale.get());
     extra.addSeparator();
-    extra.addAction(d->forceBucketRendering);
-    extra.addAction(d->drawBucketVis);
+    extra.addAction(d->forceBucketRendering.get());
+    extra.addAction(d->drawBucketVis.get());
     extra.addSeparator();
-    extra.addAction(d->setPixmapSize);
-    extra.addAction(d->saveSlicesAsImage);
+    extra.addAction(d->setPixmapSize.get());
+    extra.addAction(d->saveSlicesAsImage.get());
 
     menu.exec(event->globalPos());
 }

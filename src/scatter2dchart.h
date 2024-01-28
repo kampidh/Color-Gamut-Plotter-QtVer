@@ -19,6 +19,7 @@
 
 #include <QVector3D>
 #include <QWidget>
+#include <QScopedPointer>
 
 #include "plot_typedefs.h"
 
@@ -93,7 +94,7 @@ private:
     RenderBounds getRenderBounds() const;
 
     class Private;
-    Private *const d{nullptr};
+    QScopedPointer<Private> d;
 };
 
 #endif // SCATTER2DCHART_H

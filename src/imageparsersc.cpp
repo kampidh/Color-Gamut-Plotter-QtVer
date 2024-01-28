@@ -135,7 +135,7 @@ ImageParserSC::~ImageParserSC()
         cmsCloseProfile(d->hsXYZ);
     }
 
-    delete d;
+    d.reset();
 }
 
 void ImageParserSC::inputFile(const QImage &imgIn, int size, QVector<ColorPoint> *outCp)

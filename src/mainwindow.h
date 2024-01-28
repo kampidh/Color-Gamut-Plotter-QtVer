@@ -9,6 +9,7 @@
 
 #include "./ui_mainwindow.h"
 #include <QMainWindow>
+#include <QScopedPointer>
 
 class MainWindow : public QMainWindow, public Ui::MainWindow
 {
@@ -29,6 +30,6 @@ private:
     void dropEvent(QDropEvent *event);
 
     class Private;
-    Private *const d{nullptr};
+    QScopedPointer<Private> d;
 };
 #endif // MAINWINDOW_H
