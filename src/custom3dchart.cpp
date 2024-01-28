@@ -1610,7 +1610,7 @@ void Custom3dChart::wheelEvent(QWheelEvent *event)
     }
 }
 
-void Custom3dChart::cycleModes()
+void Custom3dChart::cycleModes(const bool &changeTarget)
 {
     if (QOpenGLContext::currentContext() != context() && context()->isValid()) {
         makeCurrent();
@@ -1945,7 +1945,9 @@ void Custom3dChart::cycleModes()
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
         break;
     }
-    d->targetPos = d->resetTargetOrigin;
+    if (changeTarget) {
+        d->targetPos = d->resetTargetOrigin;
+    }
 }
 
 void Custom3dChart::resetCamera()
@@ -2238,7 +2240,7 @@ void Custom3dChart::pasteState()
 
         d->useDepthOrder = true;
 
-        cycleModes();
+        cycleModes(false);
         doUpdate();
     }
 }

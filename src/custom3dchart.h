@@ -43,7 +43,7 @@ private:
     void doUpdate();
     void doNavigation();
     void reloadShaders();
-    void cycleModes();
+    void cycleModes(const bool &changeTarget = true);
 
     class Private;
     QScopedPointer<Private> d;
