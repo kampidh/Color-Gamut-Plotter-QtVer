@@ -27,6 +27,11 @@
 #include <QThread>
 #include <QTimer>
 
+#include <QMessageBox>
+#include <QFile>
+#include <QFileInfo>
+#include <QFileSystemWatcher>
+
 #include <lcms2.h>
 
 #include <QtMath>
@@ -35,15 +40,15 @@
 
 static constexpr int frameinterval = 2; // frame duration cap
 static constexpr size_t absolutemax = 50000000;
-static constexpr bool useShaderFile = false;
+static constexpr bool useShaderFile = true;
 
 static constexpr bool useDepthOrdering = true;
 static constexpr bool flattenGamut = true;
 
 static constexpr int fpsBufferSize = 5;
 
-// static constexpr int maxPlotModes = 8;
-static constexpr int maxPlotModes = 13;
+// static constexpr int maxPlotModes = 13;
+static constexpr int maxPlotModes = 17;
 
 static const float xyz2srgb[9] = {3.2404542, -1.5371385, -0.4985314,
                                   -0.9692660, 1.8760108, 0.0415560,
@@ -171,6 +176,8 @@ public:
     QScopedPointer<QOpenGLBuffer> adaptedColorChecker76Vbo;
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerVbo;
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVbo;
+
+    QScopedPointer<QFileSystemWatcher> shaderFileWatcher;
 };
 
 QVector<QVector3D> crossAtPos(const QVector3D &pos, float len)
@@ -252,6 +259,17 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
     d->m_navTimeout->setSingleShot(true);
     d->elTim.start();
 
+    d->shaderFileWatcher.reset(new QFileSystemWatcher(this));
+
+    connect(d->shaderFileWatcher.get(), &QFileSystemWatcher::fileChanged, this, [&](const QString &path) {
+        if (!d->shaderFileWatcher->files().contains(path)) {
+            d->shaderFileWatcher->addPath(path);
+        }
+        reloadShaders();
+        cycleModes(false);
+        doUpdate();
+    });
+
     connect(d->m_timer.get(), &QTimer::timeout, this, [&]() {
         doUpdate();
     });
@@ -293,13 +311,28 @@ void Custom3dChart::initializeGL()
     d->scatterPrg.reset(new QOpenGLShaderProgram(context()));
     d->scatterPrg->create();
 
+    /*
+     * --------------------------------------------------
+     * Plot mode conversion compute program initiate
+     * --------------------------------------------------
+     */
+
+    d->convertPrg.reset(new QOpenGLShaderProgram(context()));
+    d->convertPrg->create();
+
     reloadShaders();
 
-    if (!d->scatterPrg->link()) {
-        qWarning() << "Failed to link shader program!";
-        d->isValid = false;
-        return;
-    }
+    // if (!d->scatterPrg->link()) {
+    //     qWarning() << "Failed to link shader program!";
+    //     d->isValid = false;
+    //     return;
+    // }
+
+    // if (!d->convertPrg->link()) {
+    //     qWarning() << "Failed to link shader program!";
+    //     d->isValid = false;
+    //     return;
+    // }
 
     d->scatterPrg->bind();
 
@@ -488,21 +521,6 @@ void Custom3dChart::initializeGL()
     d->adaptedColorCheckerNewVbo->bind();
     d->adaptedColorCheckerNewVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-
-    /*
-     * --------------------------------------------------
-     * Plot mode conversion compute program initiate
-     * --------------------------------------------------
-     */
-
-    d->convertPrg.reset(new QOpenGLShaderProgram(context()));
-    d->convertPrg->create();
-    d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, conversionShader);
-    if (!d->convertPrg->link()) {
-        qWarning() << "Failed to link shader program!";
-        d->isValid = false;
-        return;
-    }
 }
 
 void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint, QVector<ImageXYZDouble> &dOutGamut)
@@ -510,7 +528,7 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
     // using double is a massive performance hit, so let's use float instead.. :3
     foreach (const auto &cp, dArray) {
         QVector3D xyypos{(float)cp.first.X, (float)cp.first.Y, (float)cp.first.Z};
-        xyypos = xyypos - QVector3D{dWhitePoint.x(), dWhitePoint.y(), 0.0f};
+        // xyypos = xyypos - QVector3D{dWhitePoint.x(), dWhitePoint.y(), 0.0f};
 
         d->vecPosData.append(xyypos);
         d->vecColData.append(QVector4D{cp.second.R, cp.second.G, cp.second.B, cp.second.A});
@@ -593,8 +611,8 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
         cmsXYZ2xyY(&dstxyYNew, &dstXYZNew);
 
         d->adaptedColorCheckerNew.append(QVector3D{static_cast<float>(dstxyYNew.x),
-                                                     static_cast<float>(dstxyYNew.y),
-                                                     static_cast<float>(dstxyYNew.Y)});
+                                                   static_cast<float>(dstxyYNew.y),
+                                                   static_cast<float>(dstxyYNew.Y)});
     }
 }
 
@@ -602,6 +620,20 @@ void Custom3dChart::reloadShaders()
 {
     if (QOpenGLContext::currentContext() != context() && context()->isValid()) {
         makeCurrent();
+    }
+
+    const QFileInfo vertFile("./shaders/3dpoint-vertex.vert");
+    const QFileInfo fragFile("./shaders/3dpoint-fragment.frag");
+    const QFileInfo compFile("./shaders/3dpoint-converter.comp");
+
+    if (vertFile.exists()) {
+        d->shaderFileWatcher->addPath(vertFile.filePath());
+    }
+    if (fragFile.exists()) {
+        d->shaderFileWatcher->addPath(fragFile.filePath());
+    }
+    if (compFile.exists()) {
+        d->shaderFileWatcher->addPath(compFile.filePath());
     }
 
     if (!d->scatterPrg->shaders().isEmpty()) {
@@ -614,7 +646,7 @@ void Custom3dChart::reloadShaders()
     if (useShaderFile) {
         d->isShaderFile = true;
         qDebug() << "Loading vertex shader file...";
-        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Vertex, "./3dpoint-vertex.glsl")) {
+        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Vertex, vertFile.filePath())) {
             d->isShaderFile = false;
             qDebug() << "Loading shader from file failed, using internal shader instead.";
             if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Vertex, vertShader)) {
@@ -624,7 +656,7 @@ void Custom3dChart::reloadShaders()
             }
         }
         qDebug() << "Loading fragment shader file...";
-        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Fragment, "./3dpoint-fragment.glsl")) {
+        if (!d->scatterPrg->addShaderFromSourceFile(QOpenGLShader::Fragment, fragFile.filePath())) {
             d->isShaderFile = false;
             qDebug() << "Loading shader from file failed, using internal shader instead.";
             if (!d->scatterPrg->addShaderFromSourceCode(QOpenGLShader::Fragment, fragShader)) {
@@ -647,11 +679,56 @@ void Custom3dChart::reloadShaders()
         }
     }
 
+    qDebug() << "Linking shader program...";
     if (!d->scatterPrg->link()) {
         qWarning() << "Failed to link shader program!";
         d->isValid = false;
         return;
     }
+
+    if (!d->convertPrg->shaders().isEmpty()) {
+        qDebug() << "Reloading compute shaders...";
+        d->convertPrg->removeAllShaders();
+    } else {
+        qDebug() << "Initializing compute shaders...";
+    }
+
+    if (useShaderFile) {
+        d->isShaderFile = true;
+        qDebug() << "Loading compute shader file...";
+        if (!d->convertPrg->addShaderFromSourceFile(QOpenGLShader::Compute, compFile.filePath())) {
+            if (compFile.exists()) {
+                QMessageBox errs(this);
+                errs.setText("Compute shader compile error! Using internal shader instead");
+                errs.setIcon(QMessageBox::Warning);
+                errs.setInformativeText(d->convertPrg->log());
+                errs.exec();
+            }
+            d->isShaderFile = false;
+            qDebug() << "Loading shader from file failed, using internal shader instead.";
+            if (!d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, conversionShader)) {
+                qWarning() << "Failed to load compute shader!";
+                d->isValid = false;
+                return;
+            }
+        }
+    } else {
+        d->isShaderFile = false;
+        if (!d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, conversionShader)) {
+            qWarning() << "Failed to load compute shader!";
+            d->isValid = false;
+            return;
+        }
+    }
+
+    qDebug() << "Linking compute shader program...";
+    if (!d->convertPrg->link()) {
+        qWarning() << "Failed to link compute shader program!";
+        d->isValid = false;
+        return;
+    }
+
+    d->isValid = true;
 }
 
 bool Custom3dChart::checkValidity()
@@ -772,9 +849,9 @@ void Custom3dChart::paintGL()
 
     // Model matrix
     QMatrix4x4 modelMatrix;
-    if (d->modeInt == -1) {
-        modelMatrix.translate(d->m_whitePoint.x(), d->m_whitePoint.y());
-    }
+    // if (d->modeInt == -1) {
+    //     modelMatrix.translate(d->m_whitePoint.x(), d->m_whitePoint.y());
+    // }
     modelMatrix.scale(1.0f, 1.0f, d->zScale);
     modelMatrix.rotate(d->turntableAngle, {0.0f, 0.0f, 1.0f});
 
@@ -1113,6 +1190,7 @@ void Custom3dChart::paintGL()
             "(F3): Next plot mode\n"
             "(F4): Cycle draw axis and gamut outline\n"
             "(F5): Cycle ColorChecker display\n"
+            "(F6): Reload shaders\n"
             "(F7): Toggle depth ordering (may heavy)\n"
             "(F10): Toggle turntable animation\n"
             "(F11): Show fullscreen\n"
@@ -1198,6 +1276,13 @@ void Custom3dChart::resizeEvent(QResizeEvent *event)
 
 void Custom3dChart::keyPressEvent(QKeyEvent *event)
 {
+    if (event->key() == Qt::Key_F6 && !event->isAutoRepeat()) {
+        reloadShaders();
+        cycleModes();
+        doUpdate();
+        return;
+    }
+
     if (!d->isValid) return;
 
     const float shiftMultp = d->isShiftHold ? 10.0f : 1.0f;
@@ -1358,6 +1443,10 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
         if (d->ccModeInt > 2) {
             d->ccModeInt = -1;
         }
+        break;
+    case Qt::Key_F6:
+        // reloadShaders();
+        // cycleModes();
         break;
     case Qt::Key_F7:
         d->expDepthOrder = !d->expDepthOrder;
@@ -1702,7 +1791,7 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
         d->resetTargetOrigin = QVector3D{wp.x(), wp.y(), 0.5f * d->zScale};
     } break;
     case 1: {
-        d->modeString = QString("CIE 1976 UCS L'u'v' (L' = 0.01x)");
+        d->modeString = QString("CIE 1976 UCS Yu'v'");
         const QVector3D wp = xyyToUCS(d->m_whitePoint, d->m_whitePoint, UCS_1976_LUV);
 
         QVector<QVector3D> imgGamut;
@@ -1906,8 +1995,24 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
         break;
     case 13:
-        d->modeString = QString("XYB - D65 (0.5x)");
+        d->modeString = QString("XYB - D65");
         d->resetTargetOrigin = QVector3D{0.0f, 0.25f, 0.5f * d->zScale};
+        break;
+    case 14:
+        d->modeString = QString("ITU.BT-601 Y'CbCr");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        break;
+    case 15:
+        d->modeString = QString("ITU.BT-709 Y'CbCr");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        break;
+    case 16:
+        d->modeString = QString("SMPTE-240M Y’PbPr");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        break;
+    case 17:
+        d->modeString = QString("Kodak YCC g1.8");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
         break;
     case -1: {
         d->modeString = QString("CIE 1931 xyY");
