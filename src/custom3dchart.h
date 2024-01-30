@@ -27,6 +27,7 @@ private slots:
     void copyState();
     void pasteState();
     void changeUpscaler();
+    void changeState();
 
 private:
     void initializeGL() override;

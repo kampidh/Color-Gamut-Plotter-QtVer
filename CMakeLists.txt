@@ -52,6 +52,9 @@ set(PROJECT_SOURCES
         src/custom3dchart.cpp
         src/shaders_gl.h
         src/helper_funcs.h
+        src/camera3dsettingdialog.h
+        src/camera3dsettingdialog.cpp
+        src/camera3dsettingdialog.ui
 )
 
 # move 3rd party into separate project

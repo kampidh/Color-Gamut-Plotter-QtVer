@@ -2,6 +2,7 @@
 #include "shaders_gl.h"
 #include "constant_dataset.h"
 #include "helper_funcs.h"
+#include "camera3dsettingdialog.h"
 
 #include <QAction>
 #include <QApplication>
@@ -35,24 +36,18 @@
 #include <lcms2.h>
 
 #include <QtMath>
-// #include <cmath>
-// #include <future>
 
 static constexpr int frameinterval = 2; // frame duration cap
 static constexpr size_t absolutemax = 50000000;
-static constexpr bool useShaderFile = true;
+static constexpr bool useShaderFile = false;
 
 static constexpr bool useDepthOrdering = true;
-static constexpr bool flattenGamut = true;
+static constexpr bool flattenGamut = false;
 
 static constexpr int fpsBufferSize = 5;
 
-// static constexpr int maxPlotModes = 13;
-static constexpr int maxPlotModes = 17;
-
-static const float xyz2srgb[9] = {3.2404542, -1.5371385, -0.4985314,
-                                  -0.9692660, 1.8760108, 0.0415560,
-                                  0.0556434, -0.2040259, 1.0572252};
+// static constexpr int maxPlotModes = 19;
+static constexpr int maximumPlotModes = 19;
 
 static const float mainAxes[] = {-1.0, 0.0, 0.0, //X
                                 1.0, 0.0, 0.0,
@@ -64,10 +59,14 @@ static const float mainAxes[] = {-1.0, 0.0, 0.0, //X
 static const float mainTickLen = 0.005;
 static const float crossLen = 0.01;
 
+static const char userDefinedShaderFile[] = "./shaders/3dpoint-userplot.comp";
+static const char userDefinedShaderTextFile[] = "./shaders/3dpoint-userplotnames.txt";
+
 class Q_DECL_HIDDEN Custom3dChart::Private
 {
 public:
     PlotSetting2D plotSetting;
+    PlotSetting3D pState;
 
     QVector<QVector3D> vecPosData;
     QVector<QVector4D> vecColData;
@@ -107,34 +106,36 @@ public:
     bool doRotate{false};
     bool showLabel{true};
     bool showHelp{false};
-    bool toggleOpaque{false};
-    bool useMaxBlend{false};
-    bool useVariableSize{false};
-    bool useSmoothParticle{true};
-    bool useMonochrome{false};
-    bool useOrtho{true};
-    bool useDepthOrder{true};
-    bool expDepthOrder{false};
     bool drawAxes{true};
     int clipboardSize{0};
-    float minalpha{0.1};
-    float fov{45};
-    float camDistToTarget{1.3};
-    float pitchAngle{90.0};
-    float yawAngle{180.0};
-    float turntableAngle{0.0};
-    float particleSize{1.0};
-    float zScale{1.0};
-    QVector3D targetPos{0.0, 0.0, 0.25};
+    bool useDepthOrder{true};
+    bool expDepthOrder{false};
+
+    //camera setting
+    // bool toggleOpaque{false};
+    // bool useMaxBlend{false};
+    // bool useVariableSize{false};
+    // bool useSmoothParticle{true};
+    // bool useMonochrome{false};
+    // bool useOrtho{true};
+    // float minalpha{0.1};
+    // float fov{45};
+    // float camDistToTarget{1.3};
+    // float pitchAngle{90.0};
+    // float yawAngle{180.0};
+    // float turntableAngle{0.0};
+    // float particleSize{1.0};
+    // float zScale{1.0};
+    // QVector3D targetPos{0.0, 0.0, 0.25};
+    // int modeInt{-1};
+    // int ccModeInt{-1};
+    // int axisModeInt{6};
+    // QColor bgColor{16, 16, 16};
+    // QColor monoColor{255, 255, 255};
+
     QVector3D resetTargetOrigin{};
-
-    QString modeString{"CIE xyY"};
-    int modeInt{-1};
-    int ccModeInt{-1};
-    int axisModeInt{6};
-
-    QColor bgColor{16, 16, 16};
-    QColor monoColor{255, 255, 255};
+    QString modeString{"CIE 1931 xyY"};
+    int maxPlotModes{maximumPlotModes};
 
     QClipboard *m_clipb;
 
@@ -142,7 +143,7 @@ public:
     bool isMouseHold{false};
     bool isShiftHold{false};
 
-    bool ongoingNav{false};
+    // bool ongoingNav{false};
     bool enableNav{false};
     bool nForward{false};
     bool nBackward{false};
@@ -150,6 +151,12 @@ public:
     bool nStrifeRight{false};
     bool nUp{false};
     bool nDown{false};
+    bool nZoomIn{false};
+    bool nZoomOut{false};
+    bool nPitchUp{false};
+    bool nPitchDown{false};
+    bool nYawRight{false};
+    bool nYawLeft{false};
 
     QScopedPointer<QOpenGLShaderProgram> scatterPrg;
     QScopedPointer<QOpenGLBuffer> scatterPosVbo;
@@ -171,13 +178,25 @@ public:
     QScopedPointer<QOpenGLBuffer> axisTicksVbo;
     QScopedPointer<QOpenGLBuffer> axisGridsVbo;
     QScopedPointer<QOpenGLBuffer> spectralLocusVbo;
-    QScopedPointer<QOpenGLBuffer> imageGamutVbo;
-    QScopedPointer<QOpenGLBuffer> srgbGamutVbo;
+    QScopedPointer<QOpenGLBuffer> imageGamutVboIn;
+    QScopedPointer<QOpenGLBuffer> imageGamutVboOut;
+    QScopedPointer<QOpenGLBuffer> srgbGamutVboIn;
+    QScopedPointer<QOpenGLBuffer> srgbGamutVboOut;
     QScopedPointer<QOpenGLBuffer> adaptedColorChecker76Vbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorChecker76VboOut;
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerVbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorCheckerVboOut;
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVbo;
+    QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVboOut;
 
+    // QScopedPointer<QOpenGLBuffer> testVboIn;
+    // QScopedPointer<QOpenGLBuffer> testVboOut;
+
+    QScopedPointer<QOpenGLShader> userDefinedShader;
     QScopedPointer<QFileSystemWatcher> shaderFileWatcher;
+
+    QByteArray userDefinedShaderRaw;
+    QByteArray userDefinedShaderRawText;
 };
 
 QVector<QVector3D> crossAtPos(const QVector3D &pos, float len)
@@ -265,6 +284,32 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
         if (!d->shaderFileWatcher->files().contains(path)) {
             d->shaderFileWatcher->addPath(path);
         }
+        qDebug() << "Reloading:" << path;
+        if (path == userDefinedShaderFile) {
+            QFileInfo udsfinfo(path);
+            // cap filesize (approx 5MB)
+            if (udsfinfo.exists() && (udsfinfo.size() < 5 * 1024 * 1024 && udsfinfo.size() > 0)) {
+                QFile usdf(path);
+                if (usdf.open(QIODevice::ReadOnly)) {
+                    d->userDefinedShaderRaw = usdf.readAll();
+                }
+                usdf.close();
+            } else {
+                d->userDefinedShaderRaw.clear();
+            }
+        }
+        if (path == userDefinedShaderTextFile) {
+            QFileInfo udsfinfo(path);
+            if (udsfinfo.exists() && (udsfinfo.size() < 5 * 1024 * 1024 && udsfinfo.size() > 0)) {
+                QFile usdf(path);
+                if (usdf.open(QIODevice::ReadOnly)) {
+                    d->userDefinedShaderRawText = usdf.readAll();
+                }
+                usdf.close();
+            } else {
+                d->userDefinedShaderRawText.clear();
+            }
+        }
         reloadShaders();
         cycleModes(false);
         doUpdate();
@@ -296,7 +341,10 @@ void Custom3dChart::initializeGL()
 {
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     QOpenGLExtraFunctions *ef = QOpenGLContext::currentContext()->extraFunctions();
-    f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+    f->glClearColor(d->pState.bgColor.redF(),
+                    d->pState.bgColor.greenF(),
+                    d->pState.bgColor.blueF(),
+                    d->pState.bgColor.alphaF());
     f->glEnable(GL_PROGRAM_POINT_SIZE);
 
     qDebug() << "Initializing opengl context with format:";
@@ -319,6 +367,7 @@ void Custom3dChart::initializeGL()
 
     d->convertPrg.reset(new QOpenGLShaderProgram(context()));
     d->convertPrg->create();
+    d->userDefinedShader.reset(new QOpenGLShader(QOpenGLShader::Compute, context()));
 
     reloadShaders();
 
@@ -468,59 +517,79 @@ void Custom3dChart::initializeGL()
     d->spectralLocusVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->spectralLocusVbo->allocate(d->spectralLocus.constData(), d->spectralLocus.size() * sizeof(QVector3D));
 
-    QVector<QVector3D> imgGamut;
-    QVector<QVector3D> srgbGamut;
-    foreach (const auto &gmt, d->imageGamut) {
-        imgGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? 0.0f : gmt.z()});
-    }
-    foreach (const auto &gmt, d->srgbGamut) {
-        srgbGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? -0.0001f : gmt.z()});
-    }
+    // QVector<QVector3D> imgGamut;
+    // QVector<QVector3D> srgbGamut;
+    // foreach (const auto &gmt, d->imageGamut) {
+    //     imgGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? 0.0f : gmt.z()});
+    // }
+    // foreach (const auto &gmt, d->srgbGamut) {
+    //     srgbGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? -0.0001f : gmt.z()});
+    // }
 
     // image gamut position VBO
-    d->imageGamutVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
-    d->imageGamutVbo->create();
-    d->imageGamutVbo->bind();
-    d->imageGamutVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
-    d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
+    d->imageGamutVboIn.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->imageGamutVboIn->create();
+    d->imageGamutVboIn->bind();
+    d->imageGamutVboIn->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->imageGamutVboIn->allocate(d->imageGamut.constData(), d->imageGamut.size() * sizeof(QVector3D));
+
+    d->imageGamutVboOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->imageGamutVboOut->create();
+    d->imageGamutVboOut->bind();
+    d->imageGamutVboOut->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->imageGamutVboOut->allocate(d->imageGamut.constData(), d->imageGamut.size() * sizeof(QVector3D));
 
     // sRGB gamut position VBO
-    d->srgbGamutVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
-    d->srgbGamutVbo->create();
-    d->srgbGamutVbo->bind();
-    d->srgbGamutVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
-    d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
+    d->srgbGamutVboIn.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->srgbGamutVboIn->create();
+    d->srgbGamutVboIn->bind();
+    d->srgbGamutVboIn->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->srgbGamutVboIn->allocate(d->srgbGamut.constData(), d->srgbGamut.size() * sizeof(QVector3D));
 
-    // Colorcheckers
-    QVector<QVector3D> cc76Cross;
-    QVector<QVector3D> ccCross;
-    QVector<QVector3D> ccNewCross;
-    for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-        cc76Cross.append(crossAtPos(d->adaptedColorChecker76.at(i), crossLen));
-        ccCross.append(crossAtPos(d->adaptedColorChecker.at(i), crossLen));
-        ccNewCross.append(crossAtPos(d->adaptedColorCheckerNew.at(i), crossLen));
-    }
+    d->srgbGamutVboOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->srgbGamutVboOut->create();
+    d->srgbGamutVboOut->bind();
+    d->srgbGamutVboOut->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->srgbGamutVboOut->allocate(d->srgbGamut.constData(), d->srgbGamut.size() * sizeof(QVector3D));
 
     // ColorChecker76
     d->adaptedColorChecker76Vbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorChecker76Vbo->create();
     d->adaptedColorChecker76Vbo->bind();
     d->adaptedColorChecker76Vbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
-    d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
+    d->adaptedColorChecker76Vbo->allocate(d->adaptedColorChecker76.constData(), d->adaptedColorChecker76.size() * sizeof(QVector3D));
+
+    d->adaptedColorChecker76VboOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->adaptedColorChecker76VboOut->create();
+    d->adaptedColorChecker76VboOut->bind();
+    d->adaptedColorChecker76VboOut->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->adaptedColorChecker76VboOut->allocate(d->adaptedColorChecker76.constData(), d->adaptedColorChecker76.size() * sizeof(QVector3D));
 
     // ColorCheckerOld
     d->adaptedColorCheckerVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorCheckerVbo->create();
     d->adaptedColorCheckerVbo->bind();
     d->adaptedColorCheckerVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
-    d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
+    d->adaptedColorCheckerVbo->allocate(d->adaptedColorChecker.constData(), d->adaptedColorChecker.size() * sizeof(QVector3D));
+
+    d->adaptedColorCheckerVboOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->adaptedColorCheckerVboOut->create();
+    d->adaptedColorCheckerVboOut->bind();
+    d->adaptedColorCheckerVboOut->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->adaptedColorCheckerVboOut->allocate(d->adaptedColorChecker.constData(), d->adaptedColorChecker.size() * sizeof(QVector3D));
 
     // ColorCheckerNew
     d->adaptedColorCheckerNewVbo.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
     d->adaptedColorCheckerNewVbo->create();
     d->adaptedColorCheckerNewVbo->bind();
     d->adaptedColorCheckerNewVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
-    d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
+    d->adaptedColorCheckerNewVbo->allocate(d->adaptedColorCheckerNew.constData(), d->adaptedColorCheckerNew.size() * sizeof(QVector3D));
+
+    d->adaptedColorCheckerNewVboOut.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
+    d->adaptedColorCheckerNewVboOut->create();
+    d->adaptedColorCheckerNewVboOut->bind();
+    d->adaptedColorCheckerNewVboOut->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    d->adaptedColorCheckerNewVboOut->allocate(d->adaptedColorCheckerNew.constData(), d->adaptedColorCheckerNew.size() * sizeof(QVector3D));
 }
 
 void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhitePoint, QVector<ImageXYZDouble> &dOutGamut)
@@ -542,10 +611,14 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
     dArray.clear();
     dArray.squeeze();
 
-    d->m_whitePoint = dWhitePoint;
+    if (dWhitePoint.isNull()) {
+        d->m_whitePoint = QVector3D{D65WPxyy[0], D65WPxyy[1], D65WPxyy[2]};
+    } else {
+        d->m_whitePoint = dWhitePoint;
+    }
 
-    d->resetTargetOrigin = QVector3D{d->m_whitePoint.x(), d->m_whitePoint.y(), 0.5f * d->zScale};
-    d->targetPos = d->resetTargetOrigin;
+    d->resetTargetOrigin = QVector3D{d->m_whitePoint.x(), d->m_whitePoint.y(), 0.5f};
+    d->pState.targetPos = d->resetTargetOrigin;
 
     // Depth ordering array
     d->vecDataOrder.resize(d->arrsize);
@@ -622,18 +695,25 @@ void Custom3dChart::reloadShaders()
         makeCurrent();
     }
 
+    [[maybe_unused]]
+    QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
+    [[maybe_unused]]
+    QOpenGLExtraFunctions *ef = QOpenGLContext::currentContext()->extraFunctions();
+
     const QFileInfo vertFile("./shaders/3dpoint-vertex.vert");
     const QFileInfo fragFile("./shaders/3dpoint-fragment.frag");
     const QFileInfo compFile("./shaders/3dpoint-converter.comp");
 
-    if (vertFile.exists()) {
-        d->shaderFileWatcher->addPath(vertFile.filePath());
-    }
-    if (fragFile.exists()) {
-        d->shaderFileWatcher->addPath(fragFile.filePath());
-    }
-    if (compFile.exists()) {
-        d->shaderFileWatcher->addPath(compFile.filePath());
+    if (useShaderFile) {
+        if (vertFile.exists()) {
+            d->shaderFileWatcher->addPath(vertFile.filePath());
+        }
+        if (fragFile.exists()) {
+            d->shaderFileWatcher->addPath(fragFile.filePath());
+        }
+        if (compFile.exists()) {
+            d->shaderFileWatcher->addPath(compFile.filePath());
+        }
     }
 
     if (!d->scatterPrg->shaders().isEmpty()) {
@@ -721,12 +801,83 @@ void Custom3dChart::reloadShaders()
         }
     }
 
+    // Used defined shader compiler
+    const QFileInfo extraCompFile(userDefinedShaderFile);
+    const QFileInfo extraCompFileName(userDefinedShaderTextFile);
+
+    if (extraCompFile.exists() && d->userDefinedShaderRaw.isEmpty()
+        && (extraCompFile.size() < 5 * 1024 * 1024 && extraCompFile.size() > 0)) {
+        d->shaderFileWatcher->addPath(extraCompFile.filePath());
+        QFile usdf(extraCompFile.filePath());
+        if (usdf.open(QIODevice::ReadOnly)) {
+            d->userDefinedShaderRaw = usdf.readAll();
+        }
+        usdf.close();
+    }
+    if (extraCompFileName.exists() && d->userDefinedShaderRawText.isEmpty()
+        && (extraCompFileName.size() < 5 * 1024 * 1024 && extraCompFileName.size() > 0)) {
+        d->shaderFileWatcher->addPath(extraCompFileName.filePath());
+        QFile usdf(extraCompFileName.filePath());
+        if (usdf.open(QIODevice::ReadOnly)) {
+            d->userDefinedShaderRawText = usdf.readAll();
+        }
+        usdf.close();
+    }
+
+    if (!d->userDefinedShaderRaw.isEmpty()) {
+        qDebug() << "Loading extra compute shader file...";
+        const QByteArray extraRaw = d->userDefinedShaderRaw;
+
+        if (extraRaw.contains("#define MODENUM")) {
+            const int modeNumIdx = extraRaw.indexOf("#define MODENUM") + sizeof("#define MODENUM");
+            bool scs = false;
+            const int numModes =
+                extraRaw.mid(modeNumIdx, extraRaw.indexOf("\n", modeNumIdx) - modeNumIdx).trimmed().toInt(&scs);
+            if (numModes > 0 && scs) {
+                // limit user shaders considerably
+                d->maxPlotModes = maximumPlotModes + std::min(numModes, 50);
+            } else {
+                d->maxPlotModes = maximumPlotModes;
+            }
+        }
+        const bool success = d->userDefinedShader->compileSourceCode(extraRaw);
+        if (success && d->userDefinedShader->isCompiled()) {
+            d->convertPrg->addShader(d->userDefinedShader.get());
+        } else {
+            QMessageBox errs(this);
+            errs.setText("User defined compute shader compile error!");
+            errs.setIcon(QMessageBox::Warning);
+            errs.setInformativeText(d->userDefinedShader->log());
+            errs.exec();
+            qDebug() << "Loading extra shader from file failed.";
+            d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, compatabilityShader);
+            d->maxPlotModes = maximumPlotModes;
+        }
+    } else {
+        d->convertPrg->addShaderFromSourceCode(QOpenGLShader::Compute, compatabilityShader);
+        d->maxPlotModes = maximumPlotModes;
+    }
+
     qDebug() << "Linking compute shader program...";
     if (!d->convertPrg->link()) {
         qWarning() << "Failed to link compute shader program!";
         d->isValid = false;
         return;
     }
+
+    // d->convertPrg->bind();
+    // const int numLoc = d->convertPrg->uniformLocation("modeNum");
+    // if (numLoc != -1) {
+    //     int numModes = 0;
+    //     f->glGetUniformiv(d->convertPrg->programId(), numLoc, &numModes);
+    //     if (numModes > 0) {
+    //         // limit user shaders considerably
+    //         d->maxPlotModes = maximumPlotModes + std::min(numModes, 50);
+    //     } else {
+    //         d->maxPlotModes = maximumPlotModes;
+    //     }
+    // }
+    // d->convertPrg->release();
 
     d->isValid = true;
 }
@@ -751,6 +902,13 @@ void Custom3dChart::paintGL()
         return;
     }
 
+    // absolute benchmark, epilepsy warning lol
+    // d->pState.modeInt++;
+    // if (d->pState.modeInt >= maxPlotModes) {
+    //     d->pState.modeInt = -1;
+    // }
+    // cycleModes(false);
+
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     QOpenGLExtraFunctions *ef = QOpenGLContext::currentContext()->extraFunctions();
     size_t maxPartNum = std::min((size_t)d->arrsize, absolutemax);
@@ -768,10 +926,10 @@ void Custom3dChart::paintGL()
         const float currentRotation = (20.0 * d->frameDelay);
         if (currentRotation < 360) {
             // d->turntableAngle += currentRotation;
-            d->yawAngle += currentRotation;
+            d->pState.yawAngle += currentRotation;
         }
-        if (d->yawAngle >= 360) {
-            d->yawAngle -= 360;
+        if (d->pState.yawAngle >= 360) {
+            d->pState.yawAngle -= 360;
         }
         // if (d->turntableAngle >= 360) {
         //     d->turntableAngle -= 360;
@@ -788,16 +946,19 @@ void Custom3dChart::paintGL()
     bool useOrdering = false;
 
     // portability reasons?
-    f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+    f->glClearColor(d->pState.bgColor.redF(),
+                    d->pState.bgColor.greenF(),
+                    d->pState.bgColor.blueF(),
+                    d->pState.bgColor.alphaF());
     f->glEnable(GL_PROGRAM_POINT_SIZE);
 
     // Enable depth testing when alpha is >=0.9,
     // otherwise enable alpha blending and depth calculation
-    if (d->minalpha < 0.9) {
+    if (d->pState.minAlpha < 0.9) {
         f->glEnable(GL_BLEND);
         f->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         useDepthTest = false;
-        if (d->useMaxBlend) {
+        if (d->pState.useMaxBlend) {
             useDepthTest = true;
             f->glBlendEquation(GL_MAX);
         }
@@ -809,7 +970,7 @@ void Custom3dChart::paintGL()
     f->glEnable(GL_LINE_SMOOTH);
     f->glEnable(GL_POLYGON_SMOOTH);
 
-    if (d->useSmoothParticle) {
+    if (d->pState.useSmoothParticle) {
         f->glEnable(GL_POINT_SMOOTH);
     }
 
@@ -819,31 +980,31 @@ void Custom3dChart::paintGL()
 
     // Perspective/ortho view matrix
     QMatrix4x4 persMatrix;
-    if (!d->useOrtho) {
-        persMatrix.perspective(d->fov, aspectRatio, 0.0005f, 50.0f);
+    if (!d->pState.useOrtho) {
+        persMatrix.perspective(d->pState.fov, aspectRatio, 0.0005f, 50.0f);
     } else {
-        persMatrix.ortho(-aspectRatio * d->camDistToTarget / 2.5f,
-                         aspectRatio * d->camDistToTarget / 2.5f,
-                         -d->camDistToTarget / 2.5f,
-                         d->camDistToTarget / 2.5f,
+        persMatrix.ortho(-aspectRatio * d->pState.camDistToTarget / 2.5f,
+                         aspectRatio * d->pState.camDistToTarget / 2.5f,
+                         -d->pState.camDistToTarget / 2.5f,
+                         d->pState.camDistToTarget / 2.5f,
                          -100.0f,
                          100.0f);
     }
 
     // Camera/target matrix
-    QVector3D camPos{(float)(qSin(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget),
-                     (float)(qCos(qDegreesToRadians(d->yawAngle)) * qCos(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget),
-                     (float)((qSin(qDegreesToRadians(d->pitchAngle)) * d->camDistToTarget))};
+    QVector3D camPos{(float)(qSin(qDegreesToRadians(d->pState.yawAngle)) * qCos(qDegreesToRadians(d->pState.pitchAngle)) * d->pState.camDistToTarget),
+                     (float)(qCos(qDegreesToRadians(d->pState.yawAngle)) * qCos(qDegreesToRadians(d->pState.pitchAngle)) * d->pState.camDistToTarget),
+                     (float)((qSin(qDegreesToRadians(d->pState.pitchAngle)) * d->pState.camDistToTarget))};
 
     QMatrix4x4 lookMatrix;
-    if (d->pitchAngle > -90.0 && d->pitchAngle < 90.0) {
-        lookMatrix.lookAt(camPos + d->targetPos, d->targetPos, {0.0f, 0.0f, 1.0f});
+    if (d->pState.pitchAngle > -90.0 && d->pState.pitchAngle < 90.0) {
+        lookMatrix.lookAt(camPos + d->pState.targetPos, d->pState.targetPos, {0.0f, 0.0f, 1.0f});
     } else {
-        d->yawAngle = 180.0f;
-        if (d->pitchAngle > 0) {
-            lookMatrix.lookAt(camPos + d->targetPos, d->targetPos, {0.0f, 1.0f, 0.0f});
+        d->pState.yawAngle = 180.0f;
+        if (d->pState.pitchAngle > 0) {
+            lookMatrix.lookAt(camPos + d->pState.targetPos, d->pState.targetPos, {0.0f, 1.0f, 0.0f});
         } else {
-            lookMatrix.lookAt(camPos + d->targetPos, d->targetPos, {0.0f, -1.0f, 0.0f});
+            lookMatrix.lookAt(camPos + d->pState.targetPos, d->pState.targetPos, {0.0f, -1.0f, 0.0f});
         }
     }
 
@@ -852,14 +1013,14 @@ void Custom3dChart::paintGL()
     // if (d->modeInt == -1) {
     //     modelMatrix.translate(d->m_whitePoint.x(), d->m_whitePoint.y());
     // }
-    modelMatrix.scale(1.0f, 1.0f, d->zScale);
-    modelMatrix.rotate(d->turntableAngle, {0.0f, 0.0f, 1.0f});
+    // modelMatrix.scale(1.0f, 1.0f, d->zScale);
+    modelMatrix.rotate(d->pState.turntableAngle, {0.0f, 0.0f, 1.0f});
 
     // precalculated matrix to be sent into gl program
     const QMatrix4x4 intermediateMatrix = persMatrix * lookMatrix;
     const QMatrix4x4 totalMatrix = persMatrix * lookMatrix * modelMatrix;
 
-    const bool shouldDepthOrder = (d->useDepthOrder && !useDepthTest && !d->useMonochrome) && (d->expDepthOrder && !useDepthTest);
+    const bool shouldDepthOrder = (d->useDepthOrder && !useDepthTest && !d->pState.useMonochrome) && (d->expDepthOrder && !useDepthTest);
 
     // depth ordering, GPU compute
     if (shouldDepthOrder) {
@@ -902,11 +1063,11 @@ void Custom3dChart::paintGL()
     }
 
     // draw axes, grids, and gamut outlines
-    if (d->axisModeInt > -1) {
+    if (d->pState.axisModeInt > -1) {
         d->axisPrg->bind();
         d->axisPrg->setUniformValue("mView", intermediateMatrix);
 
-        if (d->axisModeInt >= 3) {
+        if (d->pState.axisModeInt >= 3) {
             d->axisPrg->setUniformValue("vColor", QVector4D{0.15f, 0.15f, 0.15f, 1.0f});
             d->axisGridsVbo->bind();
             d->axisPrg->enableAttributeArray("aPosition");
@@ -928,8 +1089,10 @@ void Custom3dChart::paintGL()
             d->axisTicksVbo->release();
         }
 
-        if (d->modeInt >= -1 && d->modeInt < 5) {
-            if (d->modeInt < 2 && (d->axisModeInt == 0 || d->axisModeInt == 2 || d->axisModeInt == 4 || d->axisModeInt == 6)) {
+        if ((d->pState.modeInt >= -1 && d->pState.modeInt < 5) || true) {
+            if (d->pState.modeInt < 2
+                && (d->pState.axisModeInt == 0 || d->pState.axisModeInt == 2 || d->pState.axisModeInt == 4
+                    || d->pState.axisModeInt == 6)) {
                 d->axisPrg->setUniformValue("vColor", QVector4D{0.25f, 0.25f, 0.25f, 1.0f});
                 d->spectralLocusVbo->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
@@ -938,19 +1101,21 @@ void Custom3dChart::paintGL()
                 d->spectralLocusVbo->release();
             }
 
-            if (d->axisModeInt == 1 || d->axisModeInt == 2 || d->axisModeInt == 5 || d->axisModeInt == 6) {
-                d->srgbGamutVbo->bind();
+            if (d->pState.axisModeInt == 1 || d->pState.axisModeInt == 2 || d->pState.axisModeInt == 5
+                || d->pState.axisModeInt == 6) {
+                d->axisPrg->setUniformValue("vColor", QVector4D{0.25f, 0.25f, 0.25f, 1.0f});
+                d->srgbGamutVboOut->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
                 d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
                 f->glDrawArrays(GL_LINE_LOOP, 0, d->srgbGamut.size());
-                d->srgbGamutVbo->release();
+                d->srgbGamutVboOut->release();
 
                 d->axisPrg->setUniformValue("vColor", QVector4D{0.4f, 0.0f, 0.0f, 1.0f});
-                d->imageGamutVbo->bind();
+                d->imageGamutVboOut->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
                 d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
                 f->glDrawArrays(GL_LINE_LOOP, 0, d->imageGamut.size());
-                d->imageGamutVbo->release();
+                d->imageGamutVboOut->release();
             }
         }
 
@@ -960,7 +1125,7 @@ void Custom3dChart::paintGL()
     // finally begin drawing...
     d->scatterPrg->bind();
 
-    if (d->useMaxBlend) {
+    if (d->pState.useMaxBlend) {
         d->scatterPrg->setUniformValue("maxMode", true);
     } else {
         d->scatterPrg->setUniformValue("maxMode", false);
@@ -969,17 +1134,20 @@ void Custom3dChart::paintGL()
     d->scatterPrg->setUniformValue("mView", totalMatrix);
     d->scatterPrg->setUniformValue("bUsePrecalc", shouldDepthOrder ? 1 : 0);
 
-    if (d->useVariableSize) {
+    if (d->pState.useVariableSize) {
         d->scatterPrg->setUniformValue("bVarPointSize", true);
         d->scatterPrg->setUniformValue("fVarPointSizeK", 1.0f);
         d->scatterPrg->setUniformValue("fVarPointSizeDepth", 5.0f);
     } else {
         d->scatterPrg->setUniformValue("bVarPointSize", false);
     }
-    d->scatterPrg->setUniformValue("fPointSize", d->particleSize);
-    d->scatterPrg->setUniformValue("minAlpha", d->minalpha);
-    d->scatterPrg->setUniformValue("monoColor", QVector3D{(float)d->monoColor.redF(), (float)d->monoColor.greenF(), (float)d->monoColor.blueF()});
-    if (d->useMonochrome) {
+    d->scatterPrg->setUniformValue("fPointSize", d->pState.particleSize);
+    d->scatterPrg->setUniformValue("minAlpha", d->pState.minAlpha);
+    d->scatterPrg->setUniformValue("monoColor",
+                                   QVector3D{(float)d->pState.monoColor.redF(),
+                                             (float)d->pState.monoColor.greenF(),
+                                             (float)d->pState.monoColor.blueF()});
+    if (d->pState.useMonochrome) {
         d->scatterPrg->setUniformValue("monoMode", true);
     } else {
         d->scatterPrg->setUniformValue("monoMode", false);
@@ -1010,45 +1178,78 @@ void Custom3dChart::paintGL()
 
     QString ccString{"None"};
     // CC drawing on top of the color data
-    if (d->ccModeInt > -1) {
-        if (d->modeInt >= -1 && d->modeInt < 5) {
+    if (d->pState.ccModeInt > -1) {
+        if ((d->pState.modeInt >= -1 && d->pState.modeInt < 5) || true) {
             d->axisPrg->bind();
             d->axisPrg->setUniformValue("mView", intermediateMatrix);
 
-            switch (d->ccModeInt) {
-            case 0:
+            switch (d->pState.ccModeInt) {
+            case 0: {
                 // CC76
+
+                d->adaptedColorChecker76VboOut->bind();
+                QVector3D *ccpos = reinterpret_cast<QVector3D *>(d->adaptedColorChecker76VboOut->map(QOpenGLBuffer::ReadOnly));
+                QVector<QVector3D> ccposcross;
+                for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
+                    ccposcross.append(crossAtPos(ccpos[i], crossLen * d->pState.camDistToTarget));
+                }
+                d->adaptedColorChecker76VboOut->unmap();
+                d->adaptedColorChecker76VboOut->release();
+
                 d->axisPrg->setUniformValue("vColor", QVector4D{0.0f, 0.8f, 0.8f, 1.0f});
-                d->adaptedColorChecker76Vbo->bind();
+                // d->adaptedColorChecker76Vbo->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
-                d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
+                d->axisPrg->setAttributeArray("aPosition", ccposcross.data());
+                // d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
                 f->glDrawArrays(GL_LINES, 0, d->adaptedColorChecker76.size() * 6);
-                d->adaptedColorChecker76Vbo->release();
+                // d->adaptedColorChecker76Vbo->release();
 
                 ccString = "Classic 1976";
-                break;
-            case 1:
+            } break;
+            case 1: {
                 // CCOld
+
+                d->adaptedColorCheckerVboOut->bind();
+                QVector3D *ccpos = reinterpret_cast<QVector3D *>(d->adaptedColorCheckerVboOut->map(QOpenGLBuffer::ReadOnly));
+                QVector<QVector3D> ccposcross;
+                for (int i = 0; i < d->adaptedColorChecker.size(); i++) {
+                    ccposcross.append(crossAtPos(ccpos[i], crossLen * d->pState.camDistToTarget));
+                }
+                d->adaptedColorCheckerVboOut->unmap();
+                d->adaptedColorCheckerVboOut->release();
+
                 d->axisPrg->setUniformValue("vColor", QVector4D{0.8f, 0.8f, 0.0f, 1.0f});
-                d->adaptedColorCheckerVbo->bind();
+                // d->adaptedColorCheckerVbo->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
-                d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
+                d->axisPrg->setAttributeArray("aPosition", ccposcross.data());
+                // d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
                 f->glDrawArrays(GL_LINES, 0, d->adaptedColorChecker.size() * 6);
-                d->adaptedColorCheckerVbo->release();
+                // d->adaptedColorCheckerVbo->release();
 
                 ccString = "Pre Nov 2014";
-                break;
-            case 2:
+            } break;
+            case 2: {
                 // CCNew
+
+                d->adaptedColorCheckerNewVboOut->bind();
+                QVector3D *ccpos = reinterpret_cast<QVector3D *>(d->adaptedColorCheckerNewVboOut->map(QOpenGLBuffer::ReadOnly));
+                QVector<QVector3D> ccposcross;
+                for (int i = 0; i < d->adaptedColorCheckerNew.size(); i++) {
+                    ccposcross.append(crossAtPos(ccpos[i], crossLen * d->pState.camDistToTarget));
+                }
+                d->adaptedColorCheckerNewVboOut->unmap();
+                d->adaptedColorCheckerNewVboOut->release();
+
                 d->axisPrg->setUniformValue("vColor", QVector4D{0.8f, 0.8f, 0.8f, 1.0f});
-                d->adaptedColorCheckerNewVbo->bind();
+                // d->adaptedColorCheckerNewVbo->bind();
                 d->axisPrg->enableAttributeArray("aPosition");
-                d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
+                d->axisPrg->setAttributeArray("aPosition", ccposcross.data());
+                // d->axisPrg->setAttributeBuffer("aPosition", GL_FLOAT, 0, 3, 0);
                 f->glDrawArrays(GL_LINES, 0, d->adaptedColorCheckerNew.size() * 6);
-                d->adaptedColorCheckerNewVbo->release();
+                // d->adaptedColorCheckerNewVbo->release();
 
                 ccString = "Post Nov 2014";
-                break;
+            } break;
             default:
                 break;
             }
@@ -1106,23 +1307,23 @@ void Custom3dChart::paintGL()
 
         const QString fpsS =
             QString(
-                "%15 | Colors:%2 | FPS:%1 | Alpha:%3 | Size:%10(%13-%14) | CC:%17\n"
-                "Y:%4° | P:%9° | FOV:%5 | D:%6 | T:[%7:%8:%12] | Blend:%11 | Z-order:%16")
+                "%15\nColors:%2 | FPS:%1 | Alpha:%3 | Size:%10(%13-%14) | CC:%17 | Blend:%11\n"
+                "Y:%4° | P:%9° | FOV:%5 | D:%6 | T:[%7:%8:%12] | Z-order:%16")
                 .arg(QString::number(d->m_fps, 'f', 1),
                      (maxPartNum == absolutemax) ? QString("%1(capped)").arg(QString::number(maxPartNum))
                                                  : QString::number(maxPartNum),
-                     QString::number(d->minalpha, 'f', 3),
-                     QString::number(d->yawAngle, 'f', 2),
-                     d->useOrtho ? QString("0°") : (QString::number(d->fov, 'f', 0) + QString("°")),
-                     QString::number(d->camDistToTarget, 'f', 3),
-                     QString::number(d->targetPos.x(), 'f', 3),
-                     QString::number(d->targetPos.y(), 'f', 3),
-                     QString::number(d->pitchAngle, 'f', 2),
-                     QString::number(d->particleSize, 'f', 1),
-                     d->useMaxBlend ? QString("Max") : QString("Alpha"),
-                     QString::number(d->targetPos.z() / d->zScale, 'f', 3),
-                     d->useVariableSize ? QString("var") : QString("sta"),
-                     d->useSmoothParticle ? QString("rnd") : QString("sqr"),
+                     QString::number(d->pState.minAlpha, 'f', 3),
+                     QString::number(d->pState.yawAngle, 'f', 2),
+                     d->pState.useOrtho ? QString("0°") : (QString::number(d->pState.fov, 'f', 0) + QString("°")),
+                     QString::number(d->pState.camDistToTarget, 'f', 3),
+                     QString::number(d->pState.targetPos.x(), 'f', 3),
+                     QString::number(d->pState.targetPos.y(), 'f', 3),
+                     QString::number(d->pState.pitchAngle, 'f', 2),
+                     QString::number(d->pState.particleSize, 'f', 1),
+                     d->pState.useMaxBlend ? QString("Max") : QString("Alpha"),
+                     QString::number(d->pState.targetPos.z(), 'f', 3),
+                     d->pState.useVariableSize ? QString("var") : QString("sta"),
+                     d->pState.useSmoothParticle ? QString("rnd") : QString("sqr"),
                      d->modeString,
                      useOrdering ? QString("on") : QString("off"),
                      ccString);
@@ -1231,10 +1432,10 @@ void Custom3dChart::doUpdate()
 
 void Custom3dChart::doNavigation()
 {
-    const float sinYaw = qSin(qDegreesToRadians(d->yawAngle));
-    const float cosYaw = qCos(qDegreesToRadians(d->yawAngle));
-    const float sinPitch = qSin(qDegreesToRadians(d->pitchAngle));
-    const float cosPitch = qCos(qDegreesToRadians(d->pitchAngle));
+    const float sinYaw = qSin(qDegreesToRadians(d->pState.yawAngle));
+    const float cosYaw = qCos(qDegreesToRadians(d->pState.yawAngle));
+    const float sinPitch = qSin(qDegreesToRadians(d->pState.pitchAngle));
+    const float cosPitch = qCos(qDegreesToRadians(d->pState.pitchAngle));
 
     const float shiftMultp = d->isShiftHold ? 5.0 : 1.0;
 
@@ -1242,26 +1443,48 @@ void Custom3dChart::doNavigation()
     const float calcSpeed = baseSpeed * shiftMultp * d->frameDelay;
 
     if (d->enableNav) {
-        QVector3D camFrontBack{sinYaw * cosPitch * d->camDistToTarget,
-                               cosYaw * cosPitch * d->camDistToTarget,
-                               sinPitch * d->camDistToTarget};
+        QVector3D camFrontBack{sinYaw * cosPitch * d->pState.camDistToTarget,
+                               cosYaw * cosPitch * d->pState.camDistToTarget,
+                               sinPitch * d->pState.camDistToTarget};
 
         if (d->nForward)
-            d->targetPos = d->targetPos - (camFrontBack * calcSpeed); // move forward / W
+            d->pState.targetPos -= (camFrontBack * calcSpeed); // move forward / W
         if (d->nBackward)
-            d->targetPos = d->targetPos + (camFrontBack * calcSpeed); // move backward / A
+            d->pState.targetPos += (camFrontBack * calcSpeed); // move backward / A
 
-        QVector3D camStride{cosYaw * d->camDistToTarget, sinYaw * d->camDistToTarget * -1.0f, 0.0};
+        QVector3D camStride{cosYaw * d->pState.camDistToTarget, sinYaw * d->pState.camDistToTarget * -1.0f, 0.0};
 
         if (d->nStrifeLeft)
-            d->targetPos = d->targetPos + (camStride * calcSpeed); // stride left / S
+            d->pState.targetPos += (camStride * calcSpeed); // stride left / S
         if (d->nStrifeRight)
-            d->targetPos = d->targetPos - (camStride * calcSpeed); // stride right / D
+            d->pState.targetPos -= (camStride * calcSpeed); // stride right / D
 
         if (d->nDown)
-            d->targetPos.setZ(d->targetPos.z() - (d->camDistToTarget * calcSpeed)); // move down / C
+            d->pState.targetPos.setZ(d->pState.targetPos.z() - (d->pState.camDistToTarget * calcSpeed)); // move down / C
         if (d->nUp)
-            d->targetPos.setZ(d->targetPos.z() + (d->camDistToTarget * calcSpeed)); // move up / V
+            d->pState.targetPos.setZ(d->pState.targetPos.z() + (d->pState.camDistToTarget * calcSpeed)); // move up / V
+
+        if (d->nZoomIn)
+            d->pState.camDistToTarget -= (d->pState.camDistToTarget * calcSpeed); // zoom in
+        if (d->nZoomOut)
+            d->pState.camDistToTarget += (d->pState.camDistToTarget * calcSpeed); // zoom out
+        d->pState.camDistToTarget = std::max(0.005f, d->pState.camDistToTarget);
+
+        if (d->nPitchUp)
+            d->pState.pitchAngle -= calcSpeed * 25.0; // pitch up
+        if (d->nPitchDown)
+            d->pState.pitchAngle += calcSpeed * 25.0; // pitch down
+        if (d->nYawRight)
+            d->pState.yawAngle -= calcSpeed * 25.0; // yaw right
+        if (d->nYawLeft)
+            d->pState.yawAngle += calcSpeed * 25.0; // yaw left
+
+        d->pState.pitchAngle = std::max(-90.0f, std::min(90.0f, d->pState.pitchAngle));
+        if (d->pState.yawAngle > 360.0) {
+            d->pState.yawAngle -= 360.0;
+        } else if (d->pState.yawAngle < 0.0) {
+            d->pState.yawAngle += 360.0;
+        }
     }
 }
 
@@ -1289,31 +1512,31 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
 
     switch (event->key()) {
     case Qt::Key_Minus:
-        d->minalpha -= 0.002f;
-        d->minalpha = std::max(0.0f, d->minalpha);
+        d->pState.minAlpha -= 0.002f;
+        d->pState.minAlpha = std::max(0.0f, d->pState.minAlpha);
         break;
     case Qt::Key_Equal:
-        d->minalpha += 0.002f;
-        d->minalpha = std::min(1.0f, d->minalpha);
+        d->pState.minAlpha += 0.002f;
+        d->pState.minAlpha = std::min(1.0f, d->pState.minAlpha);
         break;
     case Qt::Key_Underscore:
-        d->minalpha -= 0.05f;
-        d->minalpha = std::max(0.0f, d->minalpha);
+        d->pState.minAlpha -= 0.05f;
+        d->pState.minAlpha = std::max(0.0f, d->pState.minAlpha);
         break;
     case Qt::Key_Plus:
-        d->minalpha += 0.05f;
-        d->minalpha = std::min(1.0f, d->minalpha);
+        d->pState.minAlpha += 0.05f;
+        d->pState.minAlpha = std::min(1.0f, d->pState.minAlpha);
         break;
     case Qt::Key_BracketLeft:
-        if (!d->useOrtho) {
-            d->fov += 1.0f * shiftMultp;
-            d->fov = std::min(170.0f, d->fov);
+        if (!d->pState.useOrtho) {
+            d->pState.fov += 1.0f * shiftMultp;
+            d->pState.fov = std::min(170.0f, d->pState.fov);
         }
         break;
     case Qt::Key_BracketRight:
-        if (!d->useOrtho) {
-            d->fov -= 1.0f * shiftMultp;
-            d->fov = std::max(1.0f, d->fov);
+        if (!d->pState.useOrtho) {
+            d->pState.fov -= 1.0f * shiftMultp;
+            d->pState.fov = std::max(1.0f, d->pState.fov);
         }
         break;
     case Qt::Key_W:
@@ -1332,8 +1555,32 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
         d->enableNav = true;
         d->nStrifeRight = true;
         break;
+    case Qt::Key_Up:
+        d->enableNav = true;
+        d->nPitchDown = true;
+        break;
+    case Qt::Key_Down:
+        d->enableNav = true;
+        d->nPitchUp = true;
+        break;
+    case Qt::Key_Left:
+        d->enableNav = true;
+        d->nYawLeft = true;
+        break;
+    case Qt::Key_Right:
+        d->enableNav = true;
+        d->nYawRight = true;
+        break;
+    case Qt::Key_PageUp:
+        d->enableNav = true;
+        d->nZoomIn = true;
+        break;
+    case Qt::Key_PageDown:
+        d->enableNav = true;
+        d->nZoomOut = true;
+        break;
     case Qt::Key_F:
-        d->targetPos = d->resetTargetOrigin;
+        d->pState.targetPos = d->resetTargetOrigin;
         break;
     case Qt::Key_C:
         if (event->modifiers() == Qt::ControlModifier) {
@@ -1355,44 +1602,44 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
         if (d->isShiftHold) {
             resetCamera();
         } else {
-            d->turntableAngle = 0.0f;
+            d->pState.turntableAngle = 0.0f;
         }
         break;
     case Qt::Key_T:
-        d->useOrtho = !d->useOrtho;
+        d->pState.useOrtho = !d->pState.useOrtho;
         break;
     case Qt::Key_K:
-        d->useMonochrome = !d->useMonochrome;
+        d->pState.useMonochrome = !d->pState.useMonochrome;
         break;
     case Qt::Key_L:
         d->showLabel = !d->showLabel;
         break;
     case Qt::Key_Q:
-        d->toggleOpaque = !d->toggleOpaque;
-        if (d->toggleOpaque) {
-            d->minalpha = 1.0f;
+        d->pState.toggleOpaque = !d->pState.toggleOpaque;
+        if (d->pState.toggleOpaque) {
+            d->pState.minAlpha = 1.0f;
         } else {
-            d->minalpha = 0.1f;
+            d->pState.minAlpha = 0.1f;
         }
         break;
     case Qt::Key_X:
         if (d->isShiftHold) {
-            d->particleSize += 1.0f;
+            d->pState.particleSize += 1.0f;
         } else {
-            d->particleSize += 0.1f;
+            d->pState.particleSize += 0.1f;
         }
-        d->particleSize = std::min(20.0f, d->particleSize);
+        d->pState.particleSize = std::min(20.0f, d->pState.particleSize);
         break;
     case Qt::Key_Z:
         if (d->isShiftHold) {
-            d->particleSize -= 1.0f;
+            d->pState.particleSize -= 1.0f;
         } else {
-            d->particleSize -= 0.1f;
+            d->pState.particleSize -= 0.1f;
         }
-        d->particleSize = std::max(0.0f, d->particleSize);
+        d->pState.particleSize = std::max(0.0f, d->pState.particleSize);
         break;
     case Qt::Key_M:
-        d->useMaxBlend = !d->useMaxBlend;
+        d->pState.useMaxBlend = !d->pState.useMaxBlend;
         break;
     case Qt::Key_N:
         d->enableMouseNav = !d->enableMouseNav;
@@ -1410,38 +1657,37 @@ void Custom3dChart::keyPressEvent(QKeyEvent *event)
         }
         break;
     case Qt::Key_P:
-        d->useVariableSize = !d->useVariableSize;
+        d->pState.useVariableSize = !d->pState.useVariableSize;
         break;
     case Qt::Key_O:
-        d->useSmoothParticle = !d->useSmoothParticle;
+        d->pState.useSmoothParticle = !d->pState.useSmoothParticle;
         break;
     case Qt::Key_F1:
         d->showHelp = !d->showHelp;
         break;
     case Qt::Key_F2:
-        d->modeInt--;
-        if (d->modeInt < -1)
-            d->modeInt = maxPlotModes;
+        d->pState.modeInt--;
+        if (d->pState.modeInt < -1)
+            d->pState.modeInt = d->maxPlotModes;
         cycleModes();
         break;
     case Qt::Key_F3:
-        d->modeInt++;
-        if (d->modeInt > maxPlotModes)
-            d->modeInt = -1;
+        d->pState.modeInt++;
+        if (d->pState.modeInt > d->maxPlotModes)
+            d->pState.modeInt = -1;
         cycleModes();
         break;
     case Qt::Key_F4:
-        // d->drawAxes = !d->drawAxes;
-        d->axisModeInt++;
-        if (d->axisModeInt > 6) {
-            d->axisModeInt = -1;
+        d->pState.axisModeInt++;
+        if (d->pState.axisModeInt > 6) {
+            d->pState.axisModeInt = -1;
         }
         break;
     case Qt::Key_F5:
         // reloadShaders();
-        d->ccModeInt++;
-        if (d->ccModeInt > 2) {
-            d->ccModeInt = -1;
+        d->pState.ccModeInt++;
+        if (d->pState.ccModeInt > 2) {
+            d->pState.ccModeInt = -1;
         }
         break;
     case Qt::Key_F6:
@@ -1526,11 +1772,31 @@ void Custom3dChart::keyReleaseEvent(QKeyEvent *event)
     case Qt::Key_V:
         d->nUp = false;
         break;
+    case Qt::Key_Up:
+        d->nPitchDown = false;
+        break;
+    case Qt::Key_Down:
+        d->nPitchUp = false;
+        break;
+    case Qt::Key_Left:
+        d->nYawLeft = false;
+        break;
+    case Qt::Key_Right:
+        d->nYawRight = false;
+        break;
+    case Qt::Key_PageUp:
+        d->nZoomIn = false;
+        break;
+    case Qt::Key_PageDown:
+        d->nZoomOut = false;
+        break;
     default:
         break;
     }
 
-    if (!(d->nForward || d->nBackward || d->nStrifeLeft || d->nStrifeRight || d->nUp || d->nDown) && !d->continousRotate) {
+    if (!(d->nForward || d->nBackward || d->nStrifeLeft || d->nStrifeRight || d->nUp || d->nDown || d->nZoomIn
+          || d->nZoomOut || d->nPitchDown || d->nPitchUp || d->nYawLeft || d->nYawRight)
+        && !d->continousRotate) {
         d->useDepthOrder = true;
         d->enableNav = false;
         d->m_timer->stop();
@@ -1591,15 +1857,15 @@ void Custom3dChart::mouseMoveEvent(QMouseEvent *event)
         const float offsetX = delposs.x() * 1.0f;
         const float offsetY = delposs.y() * 1.0f;
 
-        d->yawAngle += offsetX / orbitSpeedDivider;
+        d->pState.yawAngle += offsetX / orbitSpeedDivider;
 
-        d->pitchAngle += offsetY / orbitSpeedDivider;
-        d->pitchAngle = std::min(90.0f, std::max(-90.0f, d->pitchAngle));
+        d->pState.pitchAngle += offsetY / orbitSpeedDivider;
+        d->pState.pitchAngle = std::min(90.0f, std::max(-90.0f, d->pState.pitchAngle));
 
-        if (d->yawAngle >= 360) {
-            d->yawAngle = 0;
-        } else if (d->yawAngle < 0) {
-            d->yawAngle = 360;
+        if (d->pState.yawAngle >= 360) {
+            d->pState.yawAngle = 0;
+        } else if (d->pState.yawAngle < 0) {
+            d->pState.yawAngle = 360;
         }
 
         doUpdate();
@@ -1629,15 +1895,15 @@ void Custom3dChart::mouseMoveEvent(QMouseEvent *event)
             const float offsetX = delposs.x() * 1.0f;
             const float offsetY = delposs.y() * 1.0f;
 
-            d->yawAngle += offsetX / 15.0f;
+            d->pState.yawAngle += offsetX / 15.0f;
 
-            d->pitchAngle += offsetY / 15.0f;
-            d->pitchAngle = std::min(90.0f, std::max(-90.0f, d->pitchAngle));
+            d->pState.pitchAngle += offsetY / 15.0f;
+            d->pState.pitchAngle = std::min(90.0f, std::max(-90.0f, d->pState.pitchAngle));
 
-            if (d->yawAngle >= 360) {
-                d->yawAngle = 0;
-            } else if (d->yawAngle < 0) {
-                d->yawAngle = 360;
+            if (d->pState.yawAngle >= 360) {
+                d->pState.yawAngle = 0;
+            } else if (d->pState.yawAngle < 0) {
+                d->pState.yawAngle = 360;
             }
         } else {
             setCursor(Qt::OpenHandCursor);
@@ -1648,19 +1914,19 @@ void Custom3dChart::mouseMoveEvent(QMouseEvent *event)
             const float rawoffsetY = delposs.y() * 1.0f;
 
             // did I just spent my whole day to reinvent the wheel...
-            const float offsetX = (rawoffsetX / 1500.0) * d->camDistToTarget;
-            const float offsetY = (rawoffsetY / 1500.0) * d->camDistToTarget;
+            const float offsetX = (rawoffsetX / 1500.0) * d->pState.camDistToTarget;
+            const float offsetY = (rawoffsetY / 1500.0) * d->pState.camDistToTarget;
 
-            const float sinYaw = qSin(qDegreesToRadians(d->yawAngle));
-            const float cosYaw = qCos(qDegreesToRadians(d->yawAngle));
-            const float sinPitch = qSin(qDegreesToRadians(d->pitchAngle));
-            const float cosPitch = qCos(qDegreesToRadians(d->pitchAngle));
+            const float sinYaw = qSin(qDegreesToRadians(d->pState.yawAngle));
+            const float cosYaw = qCos(qDegreesToRadians(d->pState.yawAngle));
+            const float sinPitch = qSin(qDegreesToRadians(d->pState.pitchAngle));
+            const float cosPitch = qCos(qDegreesToRadians(d->pState.pitchAngle));
 
             QVector3D camPan{((offsetX * cosYaw) + (offsetY * -1.0f * sinYaw * sinPitch)),
                              ((offsetX * -1.0f * sinYaw) + (offsetY * -1.0f * cosYaw * sinPitch)),
                              offsetY * cosPitch};
 
-            d->targetPos = d->targetPos + camPan;
+            d->pState.targetPos = d->pState.targetPos + camPan;
         }
 
         doUpdate();
@@ -1690,21 +1956,21 @@ void Custom3dChart::wheelEvent(QWheelEvent *event)
     d->m_navTimeout->start(200);
 
     if (!d->isShiftHold) {
-        if (d->camDistToTarget > 0.0001) {
-            d->camDistToTarget -= zoomIncrement * d->camDistToTarget;
+        if (d->pState.camDistToTarget > 0.0001) {
+            d->pState.camDistToTarget -= zoomIncrement * d->pState.camDistToTarget;
 
-            d->camDistToTarget = std::max(0.005f, d->camDistToTarget);
+            d->pState.camDistToTarget = std::max(0.005f, d->pState.camDistToTarget);
             doUpdate();
         }
     } else {
-        if (!d->useOrtho) {
+        if (!d->pState.useOrtho) {
             if (zoomIncrement < 0) {
-                d->fov += 5.0f;
-                d->fov = std::min(170.0f, d->fov);
+                d->pState.fov += 5.0f;
+                d->pState.fov = std::min(170.0f, d->pState.fov);
                 doUpdate();
             } else if (zoomIncrement > 0) {
-                d->fov -= 5.0f;
-                d->fov = std::max(1.0f, d->fov);
+                d->pState.fov -= 5.0f;
+                d->pState.fov = std::max(1.0f, d->pState.fov);
                 doUpdate();
             }
         }
@@ -1717,353 +1983,287 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
         makeCurrent();
     }
 
+    if (d->pState.modeInt > d->maxPlotModes) {
+        d->pState.modeInt = d->maxPlotModes;
+    }
+
     [[maybe_unused]]
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     QOpenGLExtraFunctions *ef = QOpenGLContext::currentContext()->extraFunctions();
 
     d->convertPrg->bind();
 
-    d->scatterPosVbo->bind();
-    ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->scatterPosVbo->bufferId());
+    // main data
+    {
+        d->scatterPosVbo->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->scatterPosVbo->bufferId());
 
-    d->scatterPosVboCvt->bind();
-    ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->scatterPosVboCvt->bufferId());
+        d->scatterPosVboCvt->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->scatterPosVboCvt->bufferId());
 
-    d->convertPrg->setUniformValue("arraySize", (int)d->arrsize);
-    d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
-    d->convertPrg->setUniformValue("iMode", d->modeInt);
+        d->convertPrg->setUniformValue("arraySize", (int)d->arrsize);
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
 
-    ef->glDispatchCompute((d->arrsize + 31) / 32,1,1);
-    ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        ef->glDispatchCompute((d->arrsize + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    d->scatterPosVbo->release();
-    d->scatterPosVboCvt->release();
+        d->scatterPosVbo->release();
+        d->scatterPosVboCvt->release();
+    }
+
+    // cc 76
+    {
+        d->adaptedColorChecker76Vbo->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->adaptedColorChecker76Vbo->bufferId());
+
+        d->adaptedColorChecker76VboOut->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->adaptedColorChecker76VboOut->bufferId());
+
+        d->convertPrg->setUniformValue("arraySize", (int)d->adaptedColorChecker76.size());
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
+
+        ef->glDispatchCompute((d->adaptedColorChecker76.size() + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        d->adaptedColorCheckerVbo->release();
+        d->adaptedColorCheckerVboOut->release();
+    }
+
+    // cc old
+    {
+        d->adaptedColorCheckerVbo->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->adaptedColorCheckerVbo->bufferId());
+
+        d->adaptedColorCheckerVboOut->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->adaptedColorCheckerVboOut->bufferId());
+
+        d->convertPrg->setUniformValue("arraySize", (int)d->adaptedColorChecker.size());
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
+
+        ef->glDispatchCompute((d->adaptedColorChecker.size() + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        d->adaptedColorCheckerVbo->release();
+        d->adaptedColorCheckerVboOut->release();
+    }
+
+    // cc new
+    {
+        d->adaptedColorCheckerNewVbo->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->adaptedColorCheckerNewVbo->bufferId());
+
+        d->adaptedColorCheckerNewVboOut->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->adaptedColorCheckerNewVboOut->bufferId());
+
+        d->convertPrg->setUniformValue("arraySize", (int)d->adaptedColorCheckerNew.size());
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
+
+        ef->glDispatchCompute((d->adaptedColorCheckerNew.size() + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        d->adaptedColorCheckerNewVbo->release();
+        d->adaptedColorCheckerNewVboOut->release();
+    }
+
+    // image gamut
+    {
+        d->imageGamutVboIn->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->imageGamutVboIn->bufferId());
+
+        d->imageGamutVboOut->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->imageGamutVboOut->bufferId());
+
+        d->convertPrg->setUniformValue("arraySize", (int)d->imageGamut.size());
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
+
+        ef->glDispatchCompute((d->imageGamut.size() + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        d->imageGamutVboIn->release();
+        d->imageGamutVboOut->release();
+    }
+
+    // srgb gamut
+    {
+        d->srgbGamutVboIn->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, d->srgbGamutVboIn->bufferId());
+
+        d->srgbGamutVboOut->bind();
+        ef->glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, d->srgbGamutVboOut->bufferId());
+
+        d->convertPrg->setUniformValue("arraySize", (int)d->srgbGamut.size());
+        d->convertPrg->setUniformValue("vWhite", d->m_whitePoint);
+        d->convertPrg->setUniformValue("iMode", d->pState.modeInt);
+
+        ef->glDispatchCompute((d->srgbGamut.size() + 31) / 32,1,1);
+        ef->glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        d->srgbGamutVboIn->release();
+        d->srgbGamutVboOut->release();
+    }
+
     d->convertPrg->release();
 
-    switch (d->modeInt) {
+    switch (d->pState.modeInt) {
     case 0: {
         d->modeString = QString("CIE 1960 UCS Yuv");
 
         const QVector3D wp = xyyToUCS(d->m_whitePoint, d->m_whitePoint, UCS_1960_YUV);
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
         QVector<QVector3D> spectralLocus;
-        foreach (const auto &gmt, d->imageGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1960_YUV));
-            imgGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? 0.0f : gm.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1960_YUV));
-            srgbGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? -0.0001f : gm.z()});
-        }
         foreach (const auto &lcs, d->spectralLocus) {
             spectralLocus.append(xyToUv(lcs));
         }
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
         d->spectralLocusVbo->bind();
         d->spectralLocusVbo->allocate(spectralLocus.constData(), spectralLocus.size() * sizeof(QVector3D));
         d->spectralLocusVbo->release();
 
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker76.at(i), d->m_whitePoint, UCS_1960_YUV), crossLen));
-            ccCross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker.at(i), d->m_whitePoint, UCS_1960_YUV), crossLen));
-            ccNewCross.append(crossAtPos(xyyToUCS(d->adaptedColorCheckerNew.at(i), d->m_whitePoint, UCS_1960_YUV), crossLen));
-        }
-
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{wp.x(), wp.y(), 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{wp.x(), wp.y(), 0.5f};
     } break;
     case 1: {
         d->modeString = QString("CIE 1976 UCS Yu'v'");
         const QVector3D wp = xyyToUCS(d->m_whitePoint, d->m_whitePoint, UCS_1976_LUV);
-
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
         QVector<QVector3D> spectralLocus;
-        foreach (const auto &gmt, d->imageGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1976_LUV));
-            imgGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? 0.0f : gm.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1976_LUV));
-            srgbGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? -0.0001f : gm.z()});
-        }
         foreach (const auto &lcs, d->spectralLocus) {
             spectralLocus.append(xyToUrvr(lcs, d->m_whitePoint));
         }
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
         d->spectralLocusVbo->bind();
         d->spectralLocusVbo->allocate(spectralLocus.constData(), spectralLocus.size() * sizeof(QVector3D));
         d->spectralLocusVbo->release();
 
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker76.at(i), d->m_whitePoint, UCS_1976_LUV), crossLen));
-            ccCross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker.at(i), d->m_whitePoint, UCS_1976_LUV), crossLen));
-            ccNewCross.append(crossAtPos(xyyToUCS(d->adaptedColorCheckerNew.at(i), d->m_whitePoint, UCS_1976_LUV), crossLen));
-        }
-
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{wp.x(), wp.y(), 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{wp.x(), wp.y(), 0.5f};
     } break;
     case 2: {
         d->modeString = QString("CIE 1976 L*u*v* (0.01x)");
-
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
-        foreach (const auto &gmt, d->imageGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1976_LUV_STAR));
-            imgGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? 0.0f : gm.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            const QVector3D gm(xyyToUCS(gmt, d->m_whitePoint, UCS_1976_LUV_STAR));
-            srgbGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? -0.0001f : gm.z()});
-        }
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
-
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker76.at(i), d->m_whitePoint, UCS_1976_LUV_STAR), crossLen));
-            ccCross.append(crossAtPos(xyyToUCS(d->adaptedColorChecker.at(i), d->m_whitePoint, UCS_1976_LUV_STAR), crossLen));
-            ccNewCross.append(crossAtPos(xyyToUCS(d->adaptedColorCheckerNew.at(i), d->m_whitePoint, UCS_1976_LUV_STAR), crossLen));
-        }
-
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 3: {
         d->modeString = QString("CIE L*a*b* (0.01x)");
-
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
-        foreach (const auto &gmt, d->imageGamut) {
-            const QVector3D gm(xyyToLab(gmt, d->m_whitePoint));
-            imgGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? 0.0f : gm.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            const QVector3D gm(xyyToLab(gmt, d->m_whitePoint));
-            srgbGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? -0.0001f : gm.z()});
-        }
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
-
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(xyyToLab(d->adaptedColorChecker76.at(i), d->m_whitePoint), crossLen));
-            ccCross.append(crossAtPos(xyyToLab(d->adaptedColorChecker.at(i), d->m_whitePoint), crossLen));
-            ccNewCross.append(crossAtPos(xyyToLab(d->adaptedColorCheckerNew.at(i), d->m_whitePoint), crossLen));
-        }
-
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 4: {
         d->modeString = QString("Oklab");
-
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
-        foreach (const auto &gmt, d->imageGamut) {
-            const QVector3D gm(xyyToOklab(gmt, d->m_whitePoint));
-            imgGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? 0.0f : gm.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            const QVector3D gm(xyyToOklab(gmt, d->m_whitePoint));
-            srgbGamut.append(QVector3D{gm.x(), gm.y(), flattenGamut ? -0.0001f : gm.z()});
-        }
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
-
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(xyyToOklab(d->adaptedColorChecker76.at(i), d->m_whitePoint), crossLen));
-            ccCross.append(crossAtPos(xyyToOklab(d->adaptedColorChecker.at(i), d->m_whitePoint), crossLen));
-            ccNewCross.append(crossAtPos(xyyToOklab(d->adaptedColorCheckerNew.at(i), d->m_whitePoint), crossLen));
-        }
-
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 5:
         d->modeString = QString("CIE XYZ");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 6:
         d->modeString = QString("sRGB - Linear");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 7:
         d->modeString = QString("sRGB - Gamma 2.2");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 8:
         d->modeString = QString("sRGB - sRGB TRC");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 9:
         d->modeString = QString("LMS - CAT02");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 10:
         d->modeString = QString("LMS - E");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 11:
         d->modeString = QString("LMS - D65");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 12:
         d->modeString = QString("LMS - Phys. CMFs");
-        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 13:
         d->modeString = QString("XYB - D65");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.25f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.25f, 0.5f};
         break;
     case 14:
         d->modeString = QString("ITU.BT-601 Y'CbCr");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 15:
         d->modeString = QString("ITU.BT-709 Y'CbCr");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 16:
-        d->modeString = QString("SMPTE-240M Y’PbPr");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->modeString = QString("SMPTE-240M Y'PbPr");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 17:
         d->modeString = QString("Kodak YCC g1.8");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+        break;
+    case 18:
+        d->modeString = QString("ICtCp PQ (LMS=1.0 / SDR)");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+        break;
+    case 19:
+        d->modeString = QString("ICtCp PQ (LMS=0.0001 / HDR)");
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case -1: {
         d->modeString = QString("CIE 1931 xyY");
 
-        QVector<QVector3D> imgGamut;
-        QVector<QVector3D> srgbGamut;
-        foreach (const auto &gmt, d->imageGamut) {
-            imgGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? 0.0f : gmt.z()});
-        }
-        foreach (const auto &gmt, d->srgbGamut) {
-            srgbGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? -0.0001f : gmt.z()});
-        }
-
-        d->imageGamutVbo->bind();
-        d->imageGamutVbo->allocate(imgGamut.constData(), imgGamut.size() * sizeof(QVector3D));
-        d->imageGamutVbo->release();
-        d->srgbGamutVbo->bind();
-        d->srgbGamutVbo->allocate(srgbGamut.constData(), srgbGamut.size() * sizeof(QVector3D));
-        d->srgbGamutVbo->release();
         d->spectralLocusVbo->bind();
         d->spectralLocusVbo->allocate(d->spectralLocus.constData(), d->spectralLocus.size() * sizeof(QVector3D));
         d->spectralLocusVbo->release();
 
-        QVector<QVector3D> cc76Cross;
-        QVector<QVector3D> ccCross;
-        QVector<QVector3D> ccNewCross;
-        for (int i = 0; i < d->adaptedColorChecker76.size(); i++) {
-            cc76Cross.append(crossAtPos(d->adaptedColorChecker76.at(i), crossLen));
-            ccCross.append(crossAtPos(d->adaptedColorChecker.at(i), crossLen));
-            ccNewCross.append(crossAtPos(d->adaptedColorCheckerNew.at(i), crossLen));
+        d->resetTargetOrigin = QVector3D{d->m_whitePoint.x(), d->m_whitePoint.y(), 0.5f};
+    } break;
+    default: {
+        const int uidx = d->pState.modeInt - maximumPlotModes - 1;
+        QStringList userStringList;
+
+        if (!d->userDefinedShaderRawText.isEmpty()) {
+            const QString fromRaw = QString::fromUtf8(d->userDefinedShaderRawText);
+            QStringList userStrListBuffer = fromRaw.split("\n");
+            foreach (const auto &st, userStrListBuffer) {
+                if (!st.trimmed().isEmpty() && !st.startsWith("//")) {
+                    userStringList.append(st);
+                }
+            }
         }
 
-        d->adaptedColorChecker76Vbo->bind();
-        d->adaptedColorChecker76Vbo->allocate(cc76Cross.constData(), cc76Cross.size() * sizeof(QVector3D));
-        d->adaptedColorChecker76Vbo->release();
-        d->adaptedColorCheckerVbo->bind();
-        d->adaptedColorCheckerVbo->allocate(ccCross.constData(), ccCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerVbo->release();
-        d->adaptedColorCheckerNewVbo->bind();
-        d->adaptedColorCheckerNewVbo->allocate(ccNewCross.constData(), ccNewCross.size() * sizeof(QVector3D));
-        d->adaptedColorCheckerNewVbo->release();
-
-        d->resetTargetOrigin = QVector3D{d->m_whitePoint.x(), d->m_whitePoint.y(), 0.5f * d->zScale};
+        if (!userStringList.isEmpty() && uidx < userStringList.size()) {
+            const QStringList userDefs = userStringList.at(uidx).split("|", Qt::SkipEmptyParts);
+            if (userDefs.size() > 1) {
+                const QStringList userOrigin = userDefs.at(1).split(",");
+                if (userOrigin.size() == 3) {
+                    bool xOK = false, yOK = false, zOK = false;
+                    const float X = userOrigin.at(0).toFloat(&xOK);
+                    const float Y = userOrigin.at(1).toFloat(&yOK);
+                    const float Z = userOrigin.at(2).toFloat(&zOK);
+                    d->modeString = QString("[User %1] %2").arg(QString::number(uidx), userDefs.at(0).trimmed());
+                    if (xOK && yOK && zOK) {
+                        d->resetTargetOrigin = QVector3D{X, Y, Z};
+                    } else {
+                        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+                    }
+                } else {
+                    d->modeString = QString("[User %1] %2").arg(QString::number(uidx), userDefs.at(0).trimmed());
+                    d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+                }
+            } else {
+                d->modeString = QString("[User %1] %2").arg(QString::number(uidx), userDefs.at(0).trimmed());
+                d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+            }
+        } else {
+            d->modeString = QString("[User %1] Unnamed").arg(QString::number(uidx));
+            d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+        }
     } break;
-    default:
-        d->modeString = QString("User defined %1").arg(QString::number(d->modeInt + 2));
-        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f * d->zScale};
-        break;
     }
+
     if (changeTarget) {
-        d->targetPos = d->resetTargetOrigin;
+        d->pState.targetPos = d->resetTargetOrigin;
     }
 }
 
@@ -2075,26 +2275,29 @@ void Custom3dChart::resetCamera()
             d->m_timer->stop();
         }
     }
-    d->useMaxBlend = false;
-    d->toggleOpaque = false;
-    d->useVariableSize = false;
-    d->useSmoothParticle = true;
-    d->useMonochrome = false;
-    d->useOrtho = true;
-    d->drawAxes = true;
-    d->minalpha = 0.1f;
-    d->yawAngle = 180.0f;
-    d->turntableAngle = 0.0f;
-    d->fov = 45.0f;
-    d->camDistToTarget = 1.3f;
-    d->pitchAngle = 90.0f;
-    d->particleSize = 1.0f;
-    d->targetPos = d->resetTargetOrigin;
-    d->monoColor = QColor{255, 255, 255};
-    d->bgColor = QColor{16, 16, 16};
+    d->pState.useMaxBlend = false;
+    d->pState.toggleOpaque = false;
+    d->pState.useVariableSize = false;
+    d->pState.useSmoothParticle = true;
+    d->pState.useMonochrome = false;
+    d->pState.useOrtho = true;
+    d->pState.axisModeInt = 6;
+    d->pState.minAlpha = 0.1f;
+    d->pState.yawAngle = 180.0f;
+    d->pState.turntableAngle = 0.0f;
+    d->pState.fov = 45.0f;
+    d->pState.camDistToTarget = 1.3f;
+    d->pState.pitchAngle = 90.0f;
+    d->pState.particleSize = 1.0f;
+    d->pState.targetPos = d->resetTargetOrigin;
+    d->pState.monoColor = QColor{255, 255, 255};
+    d->pState.bgColor = QColor{16, 16, 16};
     makeCurrent();
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
-    f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+    f->glClearColor(d->pState.bgColor.redF(),
+                    d->pState.bgColor.greenF(),
+                    d->pState.bgColor.blueF(),
+                    d->pState.bgColor.alphaF());
     doneCurrent();
 
     doUpdate();
@@ -2138,8 +2341,15 @@ void Custom3dChart::contextMenuEvent(QContextMenuEvent *event)
         changeUpscaler();
     });
 
+    QAction setView(this);
+    setView.setText("Set camera view...");
+    connect(&setView, &QAction::triggered, this, [&]() {
+        changeState();
+    });
+
     menu.addAction(&copyThis);
     menu.addAction(&pasteThis);
+    menu.addAction(&setView);
     menu.addSeparator();
     menu.addAction(&changeBg);
     menu.addAction(&changeMono);
@@ -2154,15 +2364,18 @@ void Custom3dChart::changeBgColor()
     if (d->isShiftHold) {
         d->isShiftHold = false;
     }
-    const QColor currentBg = d->bgColor;
+    const QColor currentBg = d->pState.bgColor;
     const QColor setBgColor =
         QColorDialog::getColor(currentBg, this, "Set background color", QColorDialog::ShowAlphaChannel);
     if (setBgColor.isValid()) {
-        d->bgColor = setBgColor;
+        d->pState.bgColor = setBgColor;
 
         makeCurrent();
         QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
-        f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
+        f->glClearColor(d->pState.bgColor.redF(),
+                        d->pState.bgColor.greenF(),
+                        d->pState.bgColor.blueF(),
+                        d->pState.bgColor.alphaF());
         doneCurrent();
 
         d->useDepthOrder = true;
@@ -2176,11 +2389,11 @@ void Custom3dChart::changeMonoColor()
     if (d->isShiftHold) {
         d->isShiftHold = false;
     }
-    const QColor currentBg = d->monoColor;
+    const QColor currentBg = d->pState.monoColor;
     const QColor setMonoColor =
         QColorDialog::getColor(currentBg, this, "Set monochrome color", QColorDialog::ShowAlphaChannel);
     if (setMonoColor.isValid()) {
-        d->monoColor = setMonoColor;
+        d->pState.monoColor = setMonoColor;
 
         d->useDepthOrder = true;
 
@@ -2233,46 +2446,30 @@ QImage Custom3dChart::takeTheShot()
     return fboImage;
 }
 
+void Custom3dChart::changeState()
+{
+    Camera3DSettingDialog dial(d->pState, this);
+    dial.exec();
+
+    d->useDepthOrder = true;
+    if (dial.result() == QDialog::Rejected) {
+        doUpdate();
+        return;
+    }
+
+    d->pState = dial.getSettings();
+    QThread::msleep(100);
+    qDebug("I f*cked up boi");
+    doUpdate();
+    return;
+}
+
 void Custom3dChart::copyState()
 {
     QByteArray headClip{"Scatter3DClip:"};
     QByteArray toClip;
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMaxBlend), sizeof(d->useMaxBlend)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->toggleOpaque), sizeof(d->toggleOpaque)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useVariableSize), sizeof(d->useVariableSize)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useSmoothParticle), sizeof(d->useSmoothParticle)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useMonochrome), sizeof(d->useMonochrome)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->minalpha), sizeof(d->minalpha)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->yawAngle), sizeof(d->yawAngle)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->turntableAngle), sizeof(d->turntableAngle)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->fov), sizeof(d->fov)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->camDistToTarget), sizeof(d->camDistToTarget)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->pitchAngle), sizeof(d->pitchAngle)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->particleSize), sizeof(d->particleSize)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->targetPos), sizeof(d->targetPos)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->monoColor), sizeof(d->monoColor)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->bgColor), sizeof(d->bgColor)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->useOrtho), sizeof(d->useOrtho)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->drawAxes), sizeof(d->drawAxes)));
-    toClip.append(
-        QByteArray::fromRawData(reinterpret_cast<const char *>(&d->modeInt), sizeof(d->modeInt)));
+
+    toClip.append(QByteArray::fromRawData(reinterpret_cast<const char *>(&d->pState), sizeof(d->pState)));
 
     headClip.append(toClip.toBase64());
 
@@ -2287,73 +2484,10 @@ void Custom3dChart::pasteState()
     QString fromClipStr = d->m_clipb->text();
     if (fromClipStr.contains("Scatter3DClip:")) {
         QByteArray fromClip = QByteArray::fromBase64(fromClipStr.mid(fromClipStr.indexOf(":") + 1, -1).toUtf8());
-        const int bufferSize =
-            (sizeof(bool) * 7) + (sizeof(float) * 7) + sizeof(QVector3D) + (sizeof(QColor) * 2) + (sizeof(int) * 1);
-        if (fromClip.size() != bufferSize)
+        if (fromClip.size() != sizeof(PlotSetting3D))
             return;
 
-        const char* clipPointer = fromClip.constData();
-
-        const bool useMaxBlend = *reinterpret_cast<const bool *>(clipPointer);
-        clipPointer += sizeof(bool);
-        const bool toggleOpaque = *reinterpret_cast<const bool *>(clipPointer);
-        clipPointer += sizeof(bool);
-        const bool useVariableSize = *reinterpret_cast<const bool *>(clipPointer);
-        clipPointer += sizeof(bool);
-        const bool useSmoothParticle = *reinterpret_cast<const bool *>(clipPointer);
-        clipPointer += sizeof(bool);
-        const bool useMonochrome = *reinterpret_cast<const bool *>(clipPointer);
-        clipPointer += sizeof(bool);
-        const float minalpha = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float yawAngle = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float turntableAngle = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float fov = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float camDistToTarget = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float pitchAngle = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        const float particleSize = *reinterpret_cast<const float *>(clipPointer);
-        clipPointer += sizeof(float);
-        QVector3D targetPos = *reinterpret_cast<const QVector3D *>(clipPointer);
-        clipPointer += sizeof(QVector3D);
-        QColor monoColor = *reinterpret_cast<const QColor *>(clipPointer);
-        clipPointer += sizeof(QColor);
-        QColor bgColor = *reinterpret_cast<const QColor *>(clipPointer);
-        clipPointer += sizeof(QColor);
-        const bool useOrtho = *reinterpret_cast<const bool *>(clipPointer);;
-        clipPointer += sizeof(bool);
-        const bool drawAxes = *reinterpret_cast<const bool *>(clipPointer);;
-        clipPointer += sizeof(bool);
-        const int modeInt = *reinterpret_cast<const int *>(clipPointer);;
-
-        d->useMaxBlend = useMaxBlend;
-        d->toggleOpaque = toggleOpaque;
-        d->useVariableSize = useVariableSize;
-        d->useSmoothParticle = useSmoothParticle;
-        d->useMonochrome = useMonochrome;
-        d->minalpha = std::max(0.0f, std::min(1.0f, minalpha));
-        d->yawAngle = std::max(0.0f, std::min(360.0f, yawAngle));
-        d->turntableAngle = std::max(0.0f, std::min(360.0f, turntableAngle));
-        d->fov = std::max(1.0f, std::min(170.0f, fov));
-        d->camDistToTarget = std::max(0.001f, camDistToTarget);
-        d->pitchAngle = std::max(-90.0f, std::min(90.0f, pitchAngle));
-        d->particleSize = std::max(0.0f, std::min(20.0f, particleSize));
-        d->targetPos = targetPos;
-        d->monoColor = monoColor;
-        d->useOrtho = useOrtho;
-        d->drawAxes = drawAxes;
-        d->modeInt = std::max(-1, std::min(5, modeInt));
-        if (d->bgColor != bgColor) {
-            d->bgColor = bgColor;
-            makeCurrent();
-            QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
-            f->glClearColor(d->bgColor.redF(), d->bgColor.greenF(), d->bgColor.blueF(), d->bgColor.alphaF());
-            doneCurrent();
-        }
+        d->pState = *reinterpret_cast<const PlotSetting3D *>(fromClip.constData());
 
         d->useDepthOrder = true;
 

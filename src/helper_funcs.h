@@ -8,8 +8,6 @@
 #include <QVector3D>
 #include <QGenericMatrix>
 
-#include <lcms2.h>
-
 // thank you https://codereview.stackexchange.com/questions/22744/multi-threaded-sort
 template<class T>
 void parallel_sort(T *data, int len, int grainsize, const float *compobject)
@@ -40,18 +38,103 @@ void parallel_sort(T *data, int len, int grainsize, const float *compobject)
     }
 }
 
-inline QVector3D xyyToXyz(QVector3D inst)
+static constexpr float xyz2srgb[9] = {3.2404542, -1.5371385, -0.4985314,
+                                      -0.9692660, 1.8760108, 0.0415560,
+                                      0.0556434, -0.2040259, 1.0572252};
+
+static constexpr float srgb2xyzD65[9] = {0.4124564, 0.3575761, 0.1804375,
+                                         0.2126729, 0.7151522, 0.0721750,
+                                         0.0193339, 0.1191920, 0.9503041};
+
+static constexpr float D502D65Bradford[9] = {0.9555766, -0.0230393, 0.0631636,
+                                             -0.0282895, 1.0099416, 0.0210077,
+                                             0.0122982, -0.0204830, 1.3299098};
+
+static constexpr float D652D50Bradford[9] = {0.9857398, 0.0000000, 0.0000000,
+                                             0.0000000, 1.0000000, 0.0000000,
+                                             0.0000000, 0.0000000, 1.4861429};
+
+static constexpr float D65WPxyy[3] = {0.3127, 0.3290, 1.0000};
+
+inline QVector3D xyyToXyz(const QVector3D &v)
 {
     QVector3D iXYZ;
-    if (inst.y() != 0) {
-        float X = (inst.x() * inst.z()) / inst.y();
-        float Y = inst.z();
-        float Z = ((1.0 - inst.x() - inst.y()) * inst.z()) / inst.y();
+    if (v.y() != 0) {
+        float X = (v.x() * v.z()) / v.y();
+        float Y = v.z();
+        float Z = ((1.0 - v.x() - v.y()) * v.z()) / v.y();
         iXYZ = QVector3D(X, Y, Z);
     } else {
         iXYZ = QVector3D(0, 0, 0);
     }
     return iXYZ;
+}
+
+inline QVector3D xyzToXyy(const QVector3D &v, const QVector3D &whiteXyy = QVector3D{0.3127, 0.3290, 1.0000})
+{
+    if (v.x() == 0 && v.y() == 0 && v.z() == 0) {
+        return QVector3D{whiteXyy.x(), whiteXyy.y(), 0.0f};
+    }
+
+    const float x = v.x() / (v.x() + v.y() + v.z());
+    const float y = v.y() / (v.x() + v.y() + v.z());
+    const float Y = v.y();
+
+    return QVector3D{x, y, Y};
+}
+
+inline float fromSrgb(const float &v)
+{
+    if (v > 0.04045f) {
+        return (float)(pow((v + 0.055f) / 1.055f, 2.4f));
+    } else {
+        return (float)(v / 12.92f);
+    }
+}
+
+inline float toSrgb(const float &v)
+{
+    if (v > 0.0031308f) {
+        return (float)((1.055f * pow(v, 1.0f / 2.4f)) - 0.055f);
+    } else {
+        return (float)(12.92f * v);
+    }
+}
+
+inline QVector3D fromSrgb(const QVector3D &v)
+{
+    return QVector3D{fromSrgb(v.x()), fromSrgb(v.y()), fromSrgb(v.z())};
+}
+
+inline QVector3D toSrgb(const QVector3D &v)
+{
+    return QVector3D{toSrgb(v.x()), toSrgb(v.y()), toSrgb(v.z())};
+}
+
+QVector3D srgbToXyz(const QVector3D &v)
+{
+    const QGenericMatrix<3, 3, float> srgbxyz(srgb2xyzD65);
+
+    const float iRGBDummy[3] = {fromSrgb(v.x()), fromSrgb(v.y()), fromSrgb(v.z())};
+    const QGenericMatrix<1, 3, float> iXYZMat(iRGBDummy);
+
+    const QGenericMatrix<1, 3, float> xyzDummy = srgbxyz * iXYZMat;
+    const QVector3D xyz(xyzDummy.constData()[0], xyzDummy.constData()[1], xyzDummy.constData()[2]);
+
+    return xyz;
+}
+
+QVector3D srgbToXyy(const QVector3D &v)
+{
+    const QGenericMatrix<3, 3, float> srgbxyz(srgb2xyzD65);
+
+    const float iRGBDummy[3] = {fromSrgb(v.x()), fromSrgb(v.y()), fromSrgb(v.z())};
+    const QGenericMatrix<1, 3, float> iXYZMat(iRGBDummy);
+
+    const QGenericMatrix<1, 3, float> xyzDummy = srgbxyz * iXYZMat;
+    const QVector3D xyz(xyzDummy.constData()[0], xyzDummy.constData()[1], xyzDummy.constData()[2]);
+
+    return xyzToXyy(xyz);
 }
 
 // 1960 UCS uv
@@ -73,6 +156,7 @@ inline QVector3D xyToUrvr(const QVector3D &xyy, const QVector3D &wxyy)
 
     const float yt = iXYZ.y() / wXYZ.y();
 
+    [[maybe_unused]]
     const float L = [&]() {
         if (yt > e) {
             return static_cast<float>((116.0f * pow(yt, 1.0f / 3.0f)) - 16.0f);
@@ -84,7 +168,7 @@ inline QVector3D xyToUrvr(const QVector3D &xyy, const QVector3D &wxyy)
     const float u = (4.0f * xyy.x()) / ((12.0f * xyy.y()) - (2.0f * xyy.x()) + 3.0f);
     const float v = (6.0f * xyy.y()) / ((12.0f * xyy.y()) - (2.0f * xyy.x()) + 3.0f);
     const float vr = (3.0f / 2.0f) * v;
-    return QVector3D{u, vr, L / 100.0f};
+    return QVector3D{u, vr, xyy.z()};
 }
 
 enum UcsModes {
@@ -127,10 +211,10 @@ QVector3D xyyToUCS(const QVector3D &xyy, const QVector3D &wxyy, const UcsModes &
         // "The CIE 1960 UCS does not define a luminance or lightness component"
         // - Wikipedia on CIE 1960 color space
         // errrr.... let's use Y as 1931 does, Yuv it is.
-        oLuv = QVector3D(ur, vr * (2.0f / 3.0f), iXYZ.y());
+        oLuv = QVector3D(ur, vr * (2.0f / 3.0f), xyy.z());
     } else if (mode == UCS_1976_LUV) {
-        // UCS 1976 L'u'v'
-        oLuv = QVector3D(ur, vr, L / 100.0f);
+        // UCS 1976 Yu'v'
+        oLuv = QVector3D(ur, vr, xyy.z());
     } else if (mode == UCS_1976_LUV_STAR) {
         // CIE 1976 L*u*v*
         oLuv = QVector3D(u, v, L) / 100.0f;
@@ -234,13 +318,6 @@ QVector3D xyyToOklab(const QVector3D &xyy, const QVector3D &wxyy)
 
 QVector<QVector3D> getSrgbGamutxyy()
 {
-    // cmsSetAdaptationState(0.0);
-
-    cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
-    cmsHPROFILE hsXYZ = cmsCreateXYZProfile();
-    cmsHTRANSFORM srgbtoxyz =
-        cmsCreateTransform(hsRGB, TYPE_RGB_DBL, hsXYZ, TYPE_XYZ_DBL, INTENT_ABSOLUTE_COLORIMETRIC, 0);
-
     QVector<QVector3D> outGamut;
 
     const int sampleNum = 100;
@@ -248,102 +325,56 @@ QVector<QVector3D> getSrgbGamutxyy()
     // R - Y
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {1.0, secd, 0.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
 
     // Y - G
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {secd, 1.0, 0.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
 
     // G - C
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {0.0, 1.0, secd};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
 
     // C - B
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {0.0, secd, 1.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
 
     // B - M
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {secd, 0.0, 1.0};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
 
     // M - R
     for (int i = 0; i < sampleNum; i++) {
         const double secd = static_cast<double>(sampleNum - i) / static_cast<double>(sampleNum);
-
         const double rgb[3] = {1.0, 0.0, secd};
-        cmsCIEXYZ bufXYZ;
-        cmsCIExyY bufxyY;
-        cmsDoTransform(srgbtoxyz, &rgb, &bufXYZ, 1);
-        cmsXYZ2xyY(&bufxyY, &bufXYZ);
-
-        const QVector3D output{static_cast<float>(bufxyY.x),
-                               static_cast<float>(bufxyY.y),
-                               static_cast<float>(bufxyY.Y)};
+        const QVector3D output =
+            srgbToXyy(QVector3D{static_cast<float>(rgb[0]), static_cast<float>(rgb[1]), static_cast<float>(rgb[2])});
         outGamut.append(output);
     }
-
-    cmsDeleteTransform(srgbtoxyz);
-    cmsCloseProfile(hsRGB);
-    cmsCloseProfile(hsXYZ);
 
     return outGamut;
 }

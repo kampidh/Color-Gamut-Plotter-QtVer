@@ -2,6 +2,7 @@
 #define PLOT_TYPEDEFS_H
 
 #include "qdebug.h"
+#include <QColor>
 #include <QVector3D>
 #include <cmath>
 
@@ -209,6 +210,55 @@ struct PlotSetting2D {
     int particleSize{0};
     double renderScale{0.0};
     int multisample3d{0};
+};
+
+struct PlotSetting3D {
+    bool useMaxBlend{false};
+    bool toggleOpaque{false};
+    bool useVariableSize{false};
+    bool useSmoothParticle{true};
+    bool useMonochrome{false};
+    bool useOrtho{true};
+    int axisModeInt{6};
+    int modeInt{-1};
+    int ccModeInt{-1};
+    float minAlpha{0.1};
+    float particleSize{1.0};
+    float turntableAngle{0.0};
+    float camDistToTarget{1.3};
+    float fov{45.0};
+    float yawAngle{180.0};
+    float pitchAngle{90.0};
+    QVector3D targetPos{0.0, 0.0, 0.5};
+    QColor monoColor{255, 255, 255};
+    QColor bgColor{16, 16, 16};
+
+    PlotSetting3D& operator=(const PlotSetting3D &rhs) {
+        if (this == &rhs)
+            return *this;
+
+        useMaxBlend = rhs.useMaxBlend;
+        toggleOpaque = rhs.toggleOpaque;
+        useVariableSize = rhs.useVariableSize;
+        useSmoothParticle = rhs.useSmoothParticle;
+        useMonochrome = rhs.useMonochrome;
+        useOrtho = rhs.useOrtho;
+        axisModeInt = rhs.axisModeInt;
+        modeInt = rhs.modeInt;
+        ccModeInt = rhs.ccModeInt;
+        minAlpha = std::max(0.0f, std::min(1.0f, rhs.minAlpha));
+        particleSize = std::max(0.0f, std::min(20.0f, rhs.particleSize));
+        turntableAngle = std::max(0.0f, std::min(360.0f, rhs.turntableAngle));
+        camDistToTarget = std::max(0.005f, rhs.camDistToTarget);
+        fov = std::max(1.0f, std::min(170.0f, rhs.fov));
+        yawAngle = std::max(0.0f, std::min(360.0f, rhs.yawAngle));
+        pitchAngle = std::max(-90.0f, std::min(90.0f, rhs.pitchAngle));
+        targetPos = rhs.targetPos;
+        monoColor = rhs.monoColor;
+        bgColor = rhs.bgColor;
+
+        return *this;
+    };
 };
 
 #endif // PLOT_TYPEDEFS_H
