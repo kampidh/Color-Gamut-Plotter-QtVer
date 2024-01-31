@@ -33,20 +33,18 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 
-#include <lcms2.h>
-
 #include <QtMath>
 
 static constexpr int frameinterval = 2; // frame duration cap
 static constexpr size_t absolutemax = 50000000;
-static constexpr bool useShaderFile = false;
 
+// debug only
+static constexpr bool useShaderFile = false;
 static constexpr bool useDepthOrdering = true;
 static constexpr bool flattenGamut = false;
 
 static constexpr int fpsBufferSize = 5;
 
-// static constexpr int maxPlotModes = 19;
 static constexpr int maximumPlotModes = 19;
 
 static const float mainAxes[] = {-1.0, 0.0, 0.0, //X
@@ -106,32 +104,8 @@ public:
     bool doRotate{false};
     bool showLabel{true};
     bool showHelp{false};
-    bool drawAxes{true};
-    int clipboardSize{0};
     bool useDepthOrder{true};
     bool expDepthOrder{false};
-
-    //camera setting
-    // bool toggleOpaque{false};
-    // bool useMaxBlend{false};
-    // bool useVariableSize{false};
-    // bool useSmoothParticle{true};
-    // bool useMonochrome{false};
-    // bool useOrtho{true};
-    // float minalpha{0.1};
-    // float fov{45};
-    // float camDistToTarget{1.3};
-    // float pitchAngle{90.0};
-    // float yawAngle{180.0};
-    // float turntableAngle{0.0};
-    // float particleSize{1.0};
-    // float zScale{1.0};
-    // QVector3D targetPos{0.0, 0.0, 0.25};
-    // int modeInt{-1};
-    // int ccModeInt{-1};
-    // int axisModeInt{6};
-    // QColor bgColor{16, 16, 16};
-    // QColor monoColor{255, 255, 255};
 
     QVector3D resetTargetOrigin{};
     QString modeString{"CIE 1931 xyY"};
@@ -143,7 +117,6 @@ public:
     bool isMouseHold{false};
     bool isShiftHold{false};
 
-    // bool ongoingNav{false};
     bool enableNav{false};
     bool nForward{false};
     bool nBackward{false};
@@ -189,6 +162,7 @@ public:
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVbo;
     QScopedPointer<QOpenGLBuffer> adaptedColorCheckerNewVboOut;
 
+    // debug only
     // QScopedPointer<QOpenGLBuffer> testVboIn;
     // QScopedPointer<QOpenGLBuffer> testVboOut;
 
@@ -268,9 +242,6 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
         d->spectralLocus.append(QVector3D{sp[0], sp[1], 0.0f});
     }
 
-    // d->srgbGamut.append(QVector3D{0.6400f, 0.3300f, -0.001f});
-    // d->srgbGamut.append(QVector3D{0.3000f, 0.6000f, -0.001f});
-    // d->srgbGamut.append(QVector3D{0.1500f, 0.0600f, -0.001f});
     d->srgbGamut.append(getSrgbGamutxyy());
 
     d->m_timer.reset(new QTimer(this));
@@ -330,10 +301,6 @@ Custom3dChart::Custom3dChart(PlotSetting2D &plotSetting, QWidget *parent)
 Custom3dChart::~Custom3dChart()
 {
     qDebug() << "3D plot deleted";
-    // makeCurrent();
-    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // doneCurrent();
-    // context()->deleteLater();
     d.reset();
 }
 
@@ -370,18 +337,6 @@ void Custom3dChart::initializeGL()
     d->userDefinedShader.reset(new QOpenGLShader(QOpenGLShader::Compute, context()));
 
     reloadShaders();
-
-    // if (!d->scatterPrg->link()) {
-    //     qWarning() << "Failed to link shader program!";
-    //     d->isValid = false;
-    //     return;
-    // }
-
-    // if (!d->convertPrg->link()) {
-    //     qWarning() << "Failed to link shader program!";
-    //     d->isValid = false;
-    //     return;
-    // }
 
     d->scatterPrg->bind();
 
@@ -469,7 +424,6 @@ void Custom3dChart::initializeGL()
     d->computeZBuffer->setUsagePattern(QOpenGLBuffer::DynamicCopy);
     d->computeZBuffer->allocate(d->arrsize * sizeof(float));
 
-    // d->scatterPosVboCvt->release();
     d->computeOut->release();
     d->computePrg->release();
 
@@ -516,15 +470,6 @@ void Custom3dChart::initializeGL()
     d->spectralLocusVbo->bind();
     d->spectralLocusVbo->setUsagePattern(QOpenGLBuffer::DynamicDraw);
     d->spectralLocusVbo->allocate(d->spectralLocus.constData(), d->spectralLocus.size() * sizeof(QVector3D));
-
-    // QVector<QVector3D> imgGamut;
-    // QVector<QVector3D> srgbGamut;
-    // foreach (const auto &gmt, d->imageGamut) {
-    //     imgGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? 0.0f : gmt.z()});
-    // }
-    // foreach (const auto &gmt, d->srgbGamut) {
-    //     srgbGamut.append(QVector3D{gmt.x(), gmt.y(), flattenGamut ? -0.0001f : gmt.z()});
-    // }
 
     // image gamut position VBO
     d->imageGamutVboIn.reset(new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer));
@@ -632,60 +577,34 @@ void Custom3dChart::addDataPoints(QVector<ColorPoint> &dArray, QVector3D &dWhite
     }
 
     // CC points
-
-    const cmsCIExyY prfWPxyY{d->m_whitePoint.x(), d->m_whitePoint.y(), d->m_whitePoint.z()};
-    const cmsCIExyY ccWPxyY76{Macbeth_chart_1976[18][0], Macbeth_chart_1976[18][1], Macbeth_chart_1976[18][2]};
-
-    cmsCIEXYZ prfWPXYZ;
-    cmsCIEXYZ ccWPXYZ76;
-
-    cmsxyY2XYZ(&prfWPXYZ, &prfWPxyY);
-    cmsxyY2XYZ(&ccWPXYZ76, &ccWPxyY76);
+    const QVector3D prfWPxyz = xyyToXyz(d->m_whitePoint);
+    const QVector3D cc76WPxyz = xyyToXyz(QVector3D{static_cast<float>(Macbeth_chart_1976[18][0]),
+                                                   static_cast<float>(Macbeth_chart_1976[18][1]),
+                                                   static_cast<float>(Macbeth_chart_1976[18][2])});
 
     // calculate ColorChecker points to adapted illuminant
     for (int i = 0; i < 24; i++) {
         // 1976
-        const cmsCIExyY srcxyY76{Macbeth_chart_1976[i][0], Macbeth_chart_1976[i][1], Macbeth_chart_1976[i][2]};
-        cmsCIEXYZ srcXYZ76;
-        cmsCIEXYZ destXYZ76;
-        cmsCIExyY destxyY76;
-
-        cmsxyY2XYZ(&srcXYZ76, &srcxyY76);
-        cmsAdaptToIlluminant(&destXYZ76, &ccWPXYZ76, &prfWPXYZ, &srcXYZ76);
-
-        cmsXYZ2xyY(&destxyY76, &destXYZ76);
-        d->adaptedColorChecker76.append(QVector3D{static_cast<float>(destxyY76.x),
-                                                    static_cast<float>(destxyY76.y),
-                                                    static_cast<float>(destxyY76.Y)});
+        const QVector3D src76xyy{static_cast<float>(Macbeth_chart_1976[i][0]),
+                                 static_cast<float>(Macbeth_chart_1976[i][1]),
+                                 static_cast<float>(Macbeth_chart_1976[i][2])};
+        const QVector3D dst76xyy = xyzToXyy(xyzAdaptToIlluminant(cc76WPxyz, prfWPxyz, xyyToXyz(src76xyy)));
+        d->adaptedColorChecker76.append(dst76xyy);
 
         // Pre-Nov2014
-        const cmsCIExyY srcxyY{Macbeth_chart_2005[i][0], Macbeth_chart_2005[i][1], Macbeth_chart_2005[i][2]};
-        cmsCIEXYZ srcXYZ;
-        cmsCIEXYZ destXYZ;
-        cmsCIExyY destxyY;
-
-        cmsxyY2XYZ(&srcXYZ, &srcxyY);
-        cmsAdaptToIlluminant(&destXYZ, cmsD50_XYZ(), &prfWPXYZ, &srcXYZ);
-
-        cmsXYZ2xyY(&destxyY, &destXYZ);
-        d->adaptedColorChecker.append(
-            QVector3D{static_cast<float>(destxyY.x), static_cast<float>(destxyY.y), static_cast<float>(destxyY.Y)});
+        const QVector3D srcOldxyy{static_cast<float>(Macbeth_chart_2005[i][0]),
+                                 static_cast<float>(Macbeth_chart_2005[i][1]),
+                                 static_cast<float>(Macbeth_chart_2005[i][2])};
+        const QVector3D dstOldxyy = xyzToXyy(xyzAdaptToIlluminant(getD50WPxyz(), prfWPxyz, xyyToXyz(srcOldxyy)));
+        d->adaptedColorChecker.append(dstOldxyy);
 
         // Post-Nov2014
-        const cmsCIELab srcNewLab{ColorChecker_After_Nov2014_Lab[i][0],
-                                  ColorChecker_After_Nov2014_Lab[i][1],
-                                  ColorChecker_After_Nov2014_Lab[i][2]};
-        cmsCIEXYZ srcXYZNew;
-        cmsCIEXYZ dstXYZNew;
-        cmsCIExyY dstxyYNew;
-
-        cmsLab2XYZ(cmsD50_XYZ(), &srcXYZNew, &srcNewLab);
-        cmsAdaptToIlluminant(&dstXYZNew, cmsD50_XYZ(), &prfWPXYZ, &srcXYZNew);
-        cmsXYZ2xyY(&dstxyYNew, &dstXYZNew);
-
-        d->adaptedColorCheckerNew.append(QVector3D{static_cast<float>(dstxyYNew.x),
-                                                   static_cast<float>(dstxyYNew.y),
-                                                   static_cast<float>(dstxyYNew.Y)});
+        const QVector3D srcNewlab{static_cast<float>(ColorChecker_After_Nov2014_Lab[i][0]),
+                                  static_cast<float>(ColorChecker_After_Nov2014_Lab[i][1]),
+                                  static_cast<float>(ColorChecker_After_Nov2014_Lab[i][2])};
+        const QVector3D srcNewxyz = labToXYZ(srcNewlab, getD50WPxyz());
+        const QVector3D dstNewxyy = xyzToXyy(xyzAdaptToIlluminant(getD50WPxyz(), prfWPxyz, srcNewxyz));
+        d->adaptedColorCheckerNew.append(dstNewxyy);
     }
 }
 

@@ -257,7 +257,7 @@ float safeInv(const float v, const float g)
     if (v > 0) {
         return float(pow(v, 1.0 / g));
     } else {
-        return v;
+        return 0.0;
     }
 }
 

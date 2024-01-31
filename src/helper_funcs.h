@@ -8,36 +8,6 @@
 #include <QVector3D>
 #include <QGenericMatrix>
 
-// thank you https://codereview.stackexchange.com/questions/22744/multi-threaded-sort
-template<class T>
-void parallel_sort(T *data, int len, int grainsize, const float *compobject)
-{
-    if constexpr (!std::numeric_limits<T>::is_integer) {
-        return;
-    }
-    if (len < grainsize) {
-        std::sort(data, data + len, [&](const T &lhs, const T &rhs) {
-            // NaN check
-            if (std::isnan(compobject[lhs])) return false;
-            if (std::isnan(compobject[rhs])) return true;
-            return compobject[lhs] > compobject[rhs];
-        });
-    } else {
-        auto future = std::async(parallel_sort<T>, data, len / 2, grainsize, compobject);
-
-        parallel_sort(data + len / 2, len - len / 2, grainsize, compobject);
-
-        future.wait();
-
-        std::inplace_merge(data, data + len / 2, data + len, [&](const T &lhs, const T &rhs) {
-            // NaN check
-            if (std::isnan(compobject[lhs])) return false;
-            if (std::isnan(compobject[rhs])) return true;
-            return compobject[lhs] > compobject[rhs];
-        });
-    }
-}
-
 static constexpr float xyz2srgb[9] = {3.2404542, -1.5371385, -0.4985314,
                                       -0.9692660, 1.8760108, 0.0415560,
                                       0.0556434, -0.2040259, 1.0572252};
@@ -54,7 +24,35 @@ static constexpr float D652D50Bradford[9] = {0.9857398, 0.0000000, 0.0000000,
                                              0.0000000, 1.0000000, 0.0000000,
                                              0.0000000, 0.0000000, 1.4861429};
 
+static constexpr float BradfordMatrix[9] = {0.8951000, 0.2664000, -0.1614000,
+                                            -0.7502000, 1.7135000, 0.0367000,
+                                            0.0389000, -0.0685000, 1.0296000};
+
+static constexpr float BradfordInvMatrix[9] = {0.9869929, -0.1470543, 0.1599627,
+                                               0.4323053, 0.5183603, 0.0492912,
+                                               -0.0085287, 0.0400428, 0.9684867};
+
 static constexpr float D65WPxyy[3] = {0.3127, 0.3290, 1.0000};
+static constexpr float D65WPxyz[3] = {0.950470, 1.000000, 1.088830};
+
+static constexpr float D50WPxyy[3] = {0.345669, 0.358496, 1.0000};
+static constexpr float D50WPxyz[3] = {0.964220, 1.000000, 0.825210};
+
+inline constexpr QVector3D getD50WPxyz() {
+    return QVector3D{D50WPxyz[0], D50WPxyz[1], D50WPxyz[2]};
+}
+
+inline constexpr QVector3D getD50WPxyY() {
+    return QVector3D{D50WPxyy[0], D50WPxyy[1], D50WPxyy[2]};
+}
+
+inline constexpr QVector3D getD65WPxyz() {
+    return QVector3D{D65WPxyz[0], D65WPxyz[1], D65WPxyz[2]};
+}
+
+inline constexpr QVector3D getD65WPxyY() {
+    return QVector3D{D65WPxyy[0], D65WPxyy[1], D65WPxyy[2]};
+}
 
 inline QVector3D xyyToXyz(const QVector3D &v)
 {
@@ -135,6 +133,35 @@ QVector3D srgbToXyy(const QVector3D &v)
     const QVector3D xyz(xyzDummy.constData()[0], xyzDummy.constData()[1], xyzDummy.constData()[2]);
 
     return xyzToXyy(xyz);
+}
+
+QVector3D xyzAdaptToIlluminant(const QVector3D &srcWhiteXYZ, const QVector3D &illuminant, const QVector3D &srcXYZ)
+{
+    if (sizeof(QVector3D) != sizeof(float) * 3) {
+        qDebug() << "differ?";
+        return QVector3D{};
+    }
+    const QGenericMatrix<3, 3, float> matBradford(BradfordMatrix);
+    const QGenericMatrix<3, 3, float> matInvBradford(BradfordInvMatrix);
+
+    const QGenericMatrix<1, 3, float> srcWhiteXYZMat(reinterpret_cast<const float *>(&srcWhiteXYZ));
+    const QGenericMatrix<1, 3, float> illuminantMat(reinterpret_cast<const float *>(&illuminant));
+    const QGenericMatrix<1, 3, float> srcXYZMat(reinterpret_cast<const float *>(&srcXYZ));
+
+    const QGenericMatrix<1, 3, float> crdSource = matBradford * srcWhiteXYZMat;
+    const QGenericMatrix<1, 3, float> crdIlm = matBradford * illuminantMat;
+
+    const float coneRespDomain[9] = {crdIlm.constData()[0] / crdSource.constData()[0], 0.0, 0.0,
+                                     0.0, crdIlm.constData()[1] / crdSource.constData()[1], 0.0,
+                                     0.0, 0.0, crdIlm.constData()[2] / crdSource.constData()[2]};
+
+    const QGenericMatrix<3, 3, float> coneRespDomainMat(coneRespDomain);
+    const QGenericMatrix<3, 3, float> adaptationMat = matInvBradford * coneRespDomainMat * matBradford;
+
+    const QGenericMatrix<1, 3, float> xyzDummy = adaptationMat * srcXYZMat;
+    const QVector3D xyz(xyzDummy.constData()[0], xyzDummy.constData()[1], xyzDummy.constData()[2]);
+
+    return xyz;
 }
 
 // 1960 UCS uv
@@ -231,37 +258,74 @@ QVector3D xyyToLab(const QVector3D &xyy, const QVector3D &wxyy)
     const QVector3D iXYZ = xyyToXyz(xyy);
     const QVector3D wXYZ = xyyToXyz(wxyy);
 
-    const float xr = iXYZ.x() / wXYZ.x();
-    const float yr = iXYZ.y() / wXYZ.y();
-    const float zr = iXYZ.z() / wXYZ.z();
+    const double xr = iXYZ.x() / wXYZ.x();
+    const double yr = iXYZ.y() / wXYZ.y();
+    const double zr = iXYZ.z() / wXYZ.z();
 
-    float fx, fy, fz;
+    double fx, fy, fz;
 
     if (xr > e) {
-        fx = pow(xr, 1.0f / 3.0f);
+        fx = std::cbrt(xr);
     } else {
         fx = ((k * xr) + 16.0f) / 116.0f;
     }
 
     if (yr > e) {
-        fy = pow(yr, 1.0f / 3.0f);
+        fy = std::cbrt(yr);
     } else {
         fy = ((k * yr) + 16.0f) / 116.0f;
     }
 
     if (zr > e) {
-        fz = pow(zr, 1.0f / 3.0f);
+        fz = std::cbrt(zr);
     } else {
         fz = ((k * zr) + 16.0f) / 116.0f;
     }
 
-    float L = (116.0f * fy) - 16.0f;
-    float a = 500.0f * (fx - fy);
-    float b = 200.0f * (fy - fz);
+    double L = (116.0f * fy) - 16.0f;
+    double a = 500.0f * (fx - fy);
+    double b = 200.0f * (fy - fz);
 
-    QVector3D oLab = QVector3D(a, b, L) / 100.0f;
+    QVector3D oLab = QVector3D(static_cast<float>(a), static_cast<float>(b), static_cast<float>(L)) / 100.0f;
 
     return oLab;
+}
+
+QVector3D labToXYZ(const QVector3D &lab, const QVector3D &wxyz)
+{
+    const float e = 0.008856f;
+    const float k = 903.3f;
+
+    const float L = lab.x();
+    const float a = lab.y();
+    const float b = lab.z();
+
+    const double fy = (L + 16.0f) / 116.0f;
+    const double fz = fy - (b / 200.0f);
+    const double fx = (a / 500.0f) + fy;
+
+    double xr, yr, zr;
+
+    if (std::pow(fx, 3.0f) > e) {
+        xr = std::pow(fx, 3.0f);
+    } else {
+        xr = ((116.0f * fx) - 16.0f) / k;
+    }
+
+    if (L > (k * e)) {
+        yr = std::pow(((L + 16.0f) / 116.0f), 3.0f);
+    } else {
+        yr = L / k;
+    }
+
+    if (std::pow(fz, 3.0f) > e) {
+        zr = std::pow(fz, 3.0f);
+    } else {
+        zr = ((116.0f * fz) - 16.0f) / k;
+    }
+
+    const QVector3D xyz(static_cast<float>(xr), static_cast<float>(yr), static_cast<float>(zr));
+    return xyz * wxyz;
 }
 
 QVector3D xyyToOklab(const QVector3D &xyy, const QVector3D &wxyy)
@@ -377,6 +441,36 @@ QVector<QVector3D> getSrgbGamutxyy()
     }
 
     return outGamut;
+}
+
+// thank you https://codereview.stackexchange.com/questions/22744/multi-threaded-sort
+template<class T>
+void parallel_sort(T *data, int len, int grainsize, const float *compobject)
+{
+    if constexpr (!std::numeric_limits<T>::is_integer) {
+        return;
+    }
+    if (len < grainsize) {
+        std::sort(data, data + len, [&](const T &lhs, const T &rhs) {
+            // NaN check
+            if (std::isnan(compobject[lhs])) return false;
+            if (std::isnan(compobject[rhs])) return true;
+            return compobject[lhs] > compobject[rhs];
+        });
+    } else {
+        auto future = std::async(parallel_sort<T>, data, len / 2, grainsize, compobject);
+
+        parallel_sort(data + len / 2, len - len / 2, grainsize, compobject);
+
+        future.wait();
+
+        std::inplace_merge(data, data + len / 2, data + len, [&](const T &lhs, const T &rhs) {
+            // NaN check
+            if (std::isnan(compobject[lhs])) return false;
+            if (std::isnan(compobject[rhs])) return true;
+            return compobject[lhs] > compobject[rhs];
+        });
+    }
 }
 
 #endif // HELPER_FUNCS_H
