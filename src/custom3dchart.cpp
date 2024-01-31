@@ -2151,7 +2151,7 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
             }
         }
 
-        if (!userStringList.isEmpty() && uidx < userStringList.size()) {
+        if (!userStringList.isEmpty() && uidx >= 0 && uidx < userStringList.size()) {
             const QStringList userDefs = userStringList.at(uidx).split("|", Qt::SkipEmptyParts);
             if (userDefs.size() > 1) {
                 const QStringList userOrigin = userDefs.at(1).split(",");
@@ -2378,7 +2378,6 @@ void Custom3dChart::changeState()
 
     d->pState = dial.getSettings();
     QThread::msleep(100);
-    qDebug("I f*cked up boi");
     doUpdate();
     return;
 }

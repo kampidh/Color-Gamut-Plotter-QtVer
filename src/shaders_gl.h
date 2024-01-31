@@ -205,6 +205,12 @@ const mat3 xyz2srgb = mat3(
     -0.4985314, 0.0415560, 1.0572252
 );
 
+const mat3 srgb2xyz = mat3(
+    0.4124564, 0.2126729, 0.0193339,
+    0.3575761, 0.7151522, 0.1191920,
+    0.1804375, 0.0721750, 0.9503041
+);
+
 vec3 xyyToXyz(const vec3 v)
 {
     vec3 iXYZ;
@@ -636,6 +642,15 @@ void main()
     case -1:
         // Passtrough / copy buffer xyY
         outs[gl_GlobalInvocationID.x] = ins[gl_GlobalInvocationID.x];
+        break;
+
+    case -2:
+        // Special case to directly convert non linear sRGB to XYZ
+        const vec3 iLinRgb = fromSRGB(ixyY);
+        const vec3 oXYZ = srgb2xyz * iLinRgb;
+
+        const QtVect3D outXYZ = QtVect3D(oXYZ.x, oXYZ.y, oXYZ.z);
+        outs[gl_GlobalInvocationID.x] = outXYZ;
         break;
 
     default: {
