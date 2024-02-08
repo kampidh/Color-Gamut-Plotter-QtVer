@@ -340,7 +340,9 @@ void ImageParserSC::calculateFromRaw()
     }();
     d->m_prfWtpt = QVector3D(profileWtpt.x, profileWtpt.y, profileWtpt.Y);
 
-    const bool needTransform = (d->imgtosrgb && !d->m_isSrgb);
+    // TODO: check transfer function as well
+    // const bool needTransform = (d->imgtosrgb && !d->m_isSrgb);
+    const bool needTransform = true;
 
     std::function<QPair<QByteArray, QByteArray>(const QByteArray)> convertChunk = [&](const QByteArray input) {
         QByteArray trimXyz;
