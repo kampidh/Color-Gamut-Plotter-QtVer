@@ -47,18 +47,18 @@ static constexpr int fpsBufferSize = 5;
 
 static constexpr int maximumPlotModes = 19;
 
-static const float mainAxes[] = {-1.0, 0.0, 0.0, //X
-                                1.0, 0.0, 0.0,
-                                0.0, -1.0, 0.0, //Y
-                                0.0, 1.0, 0.0,
-                                0.0, 0.0, 0.0, //Z
-                                0.0, 0.0, 1.0};
+static constexpr float mainAxes[] = {-1.0, 0.0, 0.0, //X
+                                    1.0, 0.0, 0.0,
+                                    0.0, -1.0, 0.0, //Y
+                                    0.0, 1.0, 0.0,
+                                    0.0, 0.0, 0.0, //Z
+                                    0.0, 0.0, 1.0};
 
-static const float mainTickLen = 0.005;
-static const float crossLen = 0.01;
+static constexpr float mainTickLen = 0.005;
+static constexpr float crossLen = 0.01;
 
-static const char userDefinedShaderFile[] = "./shaders/3dpoint-userplot.comp";
-static const char userDefinedShaderTextFile[] = "./shaders/3dpoint-userplotnames.txt";
+static constexpr char userDefinedShaderFile[] = "./shaders/3dpoint-userplot.comp";
+static constexpr char userDefinedShaderTextFile[] = "./shaders/3dpoint-userplotnames.txt";
 
 class Q_DECL_HIDDEN Custom3dChart::Private
 {
@@ -875,7 +875,8 @@ void Custom3dChart::paintGL()
     // otherwise enable alpha blending and depth calculation
     if (d->pState.minAlpha < 0.9) {
         f->glEnable(GL_BLEND);
-        f->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // f->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        f->glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         useDepthTest = false;
         if (d->pState.useMaxBlend) {
             useDepthTest = true;
@@ -2347,7 +2348,8 @@ QImage Custom3dChart::takeTheShot()
     if (d->plotSetting.multisample3d > 0) {
         format.setSamples(d->plotSetting.multisample3d);
     }
-    format.setInternalTextureFormat(GL_RGB);
+    // format.setInternalTextureFormat(GL_RGB);
+    format.setInternalTextureFormat(GL_RGBA32F);
     QOpenGLFramebufferObject fbo(size() * d->upscaler, format);
 
     fbo.bind();
@@ -2355,6 +2357,8 @@ QImage Custom3dChart::takeTheShot()
     paintGL();
 
     QImage fboImage(fbo.toImage());
+    fboImage.setColorSpace(QColorSpace::SRgb);
+    fboImage.convertToColorSpace(QColorSpace::SRgbLinear);
 
     fbo.release();
     fbo.bindDefault();

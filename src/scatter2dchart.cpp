@@ -52,7 +52,7 @@
     static const QImage::Format fmtFor16bit = QImage::Format_RGBA64_Premultiplied;
 #else
     static const QImage::Format fmtFor8bit = QImage::Format_ARGB32;
-    static const QImage::Format fmtFor16bit = QImage::Format_RGBA16FPx4_Premultiplied;
+    static const QImage::Format fmtFor16bit = QImage::Format_RGBA32FPx4_Premultiplied;
 #endif
 
 // adaptive downsampling params, hardcoded

@@ -340,16 +340,33 @@ void ScatterDialog::savePlotImage()
 
     if (!d->m_is2d) {
         out = d->m_custom3d->takeTheShot();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+        if (tmpFileName.endsWith(".tif")) {
+            if (out.colorSpace() != QColorSpace::SRgbLinear) {
+                out.convertToColorSpace(QColorSpace::SRgbLinear);
+            }
+            out.convertTo(QImage::Format_RGBA32FPx4);
+        } else if (tmpFileName.endsWith(".png")) {
+            if (out.colorSpace() != QColorSpace::SRgb) {
+                out.convertToColorSpace(QColorSpace::SRgb);
+            }
+            out.convertTo(QImage::Format_RGBA64);
+        }
+#endif
     } else {
         if (d->m_2dScatter->getFullPixmap()) {
             out = *d->m_2dScatter->getFullPixmap();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
             if (tmpFileName.endsWith(".tif")) {
+                if (out.colorSpace() != QColorSpace::SRgbLinear) {
+                    out.convertToColorSpace(QColorSpace::SRgbLinear);
+                }
                 out.convertTo(QImage::Format_RGBA32FPx4);
-                out.convertToColorSpace(QColorSpace::SRgbLinear);
             } else if (tmpFileName.endsWith(".png")) {
+                if (out.colorSpace() != QColorSpace::SRgb) {
+                    out.convertToColorSpace(QColorSpace::SRgb);
+                }
                 out.convertTo(QImage::Format_RGBA64);
-                out.convertToColorSpace(QColorSpace::SRgb);
             }
 #endif
             if (tmpFileName.endsWith(".jxl")) {
