@@ -81,6 +81,10 @@ public:
     QVector<QVector3D> adaptedColorChecker;
     QVector<QVector3D> adaptedColorCheckerNew;
 
+    QString xAxis{"x"};
+    QString yAxis{"y"};
+    QString zAxis{"Y"};
+
     QFont m_labelFont;
 
     size_t arrsize{0};
@@ -1202,20 +1206,24 @@ void Custom3dChart::paintGL()
 
     const QRect calcRect(0, 0, width() * d->upscaler, height() * d->upscaler);
 
-    // axis label stuffs
-    // pai.setPen(Qt::lightGray);
-    // pai.setBrush(QColor(0, 0, 0, 160));
-    // pai.setFont(d->m_labelFont);
+    if (d->pState.axisModeInt >= 3) {
+        // axis label stuffs
+        pai.setPen(Qt::gray);
+        pai.setBrush(QColor(0, 0, 0, 160));
+        pai.setFont(d->m_labelFont);
 
-    // pai.drawText(
-    //     projected(QVector3D(0.0f, 1.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
-    //     "y");
-    // pai.drawText(
-    //     projected(QVector3D(1.0f, 0.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
-    //     "x");
-    // pai.drawText(
-    //     projected(QVector3D(0.0f, 0.0f, 1.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
-    //     "Y");
+        pai.drawText(
+            projected(QVector3D(1.0f, 0.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+            d->xAxis);
+        pai.drawText(
+            projected(QVector3D(0.0f, 1.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+            d->yAxis);
+        if (d->pState.pitchAngle > -90.0f && d->pState.pitchAngle < 90.0f) {
+            pai.drawText(
+                projected(QVector3D(0.0f, 0.0f, 1.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+                d->zAxis);
+        }
+    }
 
     if (d->showLabel) {
         if (d->accFpsIdx >= d->accumulatedFps.size()) {
@@ -2048,6 +2056,10 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
     case 0: {
         d->modeString = QString("CIE 1960 UCS Yuv");
 
+        d->xAxis = QString("u");
+        d->yAxis = QString("v");
+        d->zAxis = QString("Y");
+
         const QVector3D wp = xyyToUCS(d->m_whitePoint, d->m_whitePoint, UCS_1960_YUV);
         QVector<QVector3D> spectralLocus;
         foreach (const auto &lcs, d->spectralLocus) {
@@ -2061,6 +2073,11 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
     } break;
     case 1: {
         d->modeString = QString("CIE 1976 UCS Yu'v'");
+
+        d->xAxis = QString("u'");
+        d->yAxis = QString("v'");
+        d->zAxis = QString("Y");
+
         const QVector3D wp = xyyToUCS(d->m_whitePoint, d->m_whitePoint, UCS_1976_LUV);
         QVector<QVector3D> spectralLocus;
         foreach (const auto &lcs, d->spectralLocus) {
@@ -2074,78 +2091,172 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
     } break;
     case 2: {
         d->modeString = QString("CIE 1976 L*u*v* (0.01x)");
+
+        d->xAxis = QString("u*");
+        d->yAxis = QString("v*");
+        d->zAxis = QString("L*");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 3: {
         d->modeString = QString("CIE L*a*b* (0.01x)");
+
+        d->xAxis = QString("a*");
+        d->yAxis = QString("b*");
+        d->zAxis = QString("L*");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 4: {
         d->modeString = QString("Oklab");
+
+        d->xAxis = QString("a");
+        d->yAxis = QString("b");
+        d->zAxis = QString("L");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
     } break;
     case 5:
         d->modeString = QString("CIE XYZ");
+
+        d->xAxis = QString("X");
+        d->yAxis = QString("Y");
+        d->zAxis = QString("Z");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 6:
         d->modeString = QString("sRGB - Linear");
+
+        d->xAxis = QString("R");
+        d->yAxis = QString("G");
+        d->zAxis = QString("B");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 7:
         d->modeString = QString("sRGB - Gamma 2.2");
+
+        d->xAxis = QString("R");
+        d->yAxis = QString("G");
+        d->zAxis = QString("B");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 8:
         d->modeString = QString("sRGB - sRGB TRC");
+
+        d->xAxis = QString("R");
+        d->yAxis = QString("G");
+        d->zAxis = QString("B");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 9:
         d->modeString = QString("LMS - CAT02");
+
+        d->xAxis = QString("L");
+        d->yAxis = QString("M");
+        d->zAxis = QString("S");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 10:
         d->modeString = QString("LMS - E");
+
+        d->xAxis = QString("L");
+        d->yAxis = QString("M");
+        d->zAxis = QString("S");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 11:
         d->modeString = QString("LMS - D65");
+
+        d->xAxis = QString("L");
+        d->yAxis = QString("M");
+        d->zAxis = QString("S");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 12:
         d->modeString = QString("LMS - Phys. CMFs");
+
+        d->xAxis = QString("L");
+        d->yAxis = QString("M");
+        d->zAxis = QString("S");
+
         d->resetTargetOrigin = QVector3D{0.5f, 0.5f, 0.5f};
         break;
     case 13:
         d->modeString = QString("XYB - D65");
+
+        d->xAxis = QString("X");
+        d->yAxis = QString("B");
+        d->zAxis = QString("Y");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 14:
         d->modeString = QString("ITU.BT-601 Y'CbCr");
+
+        d->xAxis = QString("Cb");
+        d->yAxis = QString("Cr");
+        d->zAxis = QString("Y'");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 15:
         d->modeString = QString("ITU.BT-709 Y'CbCr");
+
+        d->xAxis = QString("Cb");
+        d->yAxis = QString("Cr");
+        d->zAxis = QString("Y'");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 16:
         d->modeString = QString("SMPTE-240M Y'PbPr");
+
+        d->xAxis = QString("Pb");
+        d->yAxis = QString("Pr");
+        d->zAxis = QString("Y'");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 17:
         d->modeString = QString("Kodak YCC g1.8");
+
+        d->xAxis = QString("C1");
+        d->yAxis = QString("C2");
+        d->zAxis = QString("Y");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 18:
         d->modeString = QString("ICtCp PQ (LMS=1.0 / SDR)");
+
+        d->xAxis = QString("Ct");
+        d->yAxis = QString("Cp");
+        d->zAxis = QString("I");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 19:
         d->modeString = QString("ICtCp PQ (LMS=0.0001 / HDR)");
+
+        d->xAxis = QString("Ct");
+        d->yAxis = QString("Cp");
+        d->zAxis = QString("I");
+
         d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case -1: {
         d->modeString = QString("CIE 1931 xyY");
+
+        d->xAxis = QString("x");
+        d->yAxis = QString("y");
+        d->zAxis = QString("Y");
 
         d->spectralLocusVbo->bind();
         d->spectralLocusVbo->allocate(d->spectralLocus.constData(), d->spectralLocus.size() * sizeof(QVector3D));
@@ -2156,6 +2267,10 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
     default: {
         const int uidx = d->pState.modeInt - maximumPlotModes - 1;
         QStringList userStringList;
+
+        d->xAxis = QString("x");
+        d->yAxis = QString("y");
+        d->zAxis = QString("z");
 
         if (!d->userDefinedShaderRawText.isEmpty()) {
             const QString fromRaw = QString::fromUtf8(d->userDefinedShaderRawText);
@@ -2168,7 +2283,7 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
         }
 
         if (!userStringList.isEmpty() && uidx >= 0 && uidx < userStringList.size()) {
-            const QStringList userDefs = userStringList.at(uidx).split("|", Qt::SkipEmptyParts);
+            const QStringList userDefs = userStringList.at(uidx).split("|");
             if (userDefs.size() > 1) {
                 const QStringList userOrigin = userDefs.at(1).split(",");
                 if (userOrigin.size() == 3) {
@@ -2185,6 +2300,18 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
                 } else {
                     d->modeString = QString("[User %1] %2").arg(QString::number(uidx), userDefs.at(0).trimmed());
                     d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
+                }
+
+                if (userDefs.size() > 2) {
+                    const QStringList userAxis = userDefs.at(2).split(",");
+                    if (userAxis.size() == 3) {
+                        if (userAxis.at(0).size() < 32)
+                            d->xAxis = userAxis.at(0);
+                        if (userAxis.at(1).size() < 32)
+                            d->yAxis = userAxis.at(1);
+                        if (userAxis.at(2).size() < 32)
+                            d->zAxis = userAxis.at(2);
+                    }
                 }
             } else {
                 d->modeString = QString("[User %1] %2").arg(QString::number(uidx), userDefs.at(0).trimmed());
