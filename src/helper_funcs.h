@@ -443,6 +443,17 @@ QVector<QVector3D> getSrgbGamutxyy()
     return outGamut;
 }
 
+QPointF projected(const QVector3D &pos, const QMatrix4x4 &mat, const QSizeF &scrSize)
+{
+    const QVector4D pospos(pos.x(), pos.y(), pos.z(), 1.0f);
+    const QVector4D abspospos = mat * pospos;
+    const QVector2D scrpospos(((abspospos.x() / abspospos.w()) + 1.0f) / 2.0f,
+                              1.0f - (((abspospos.y() / abspospos.w()) + 1.0f) / 2.0f));
+    const QPointF pointpospos(scrpospos.x() * scrSize.width(), scrpospos.y() * scrSize.height());
+
+    return pointpospos;
+}
+
 // thank you https://codereview.stackexchange.com/questions/22744/multi-threaded-sort
 template<class T>
 void parallel_sort(T *data, int len, int grainsize, const float *compobject)

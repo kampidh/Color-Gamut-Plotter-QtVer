@@ -532,11 +532,21 @@ void main()
         const float Lgamma = cbroot(Lmix) + cbroot(bias);
         const float Mgamma = cbroot(Mmix) + cbroot(bias);
         const float Sgamma = cbroot(Smix) + cbroot(bias);
-        const float X = (Lgamma - Mgamma) / 2.0;
-        const float Y = (Lgamma + Mgamma) / 2.0;
-        const float B = Sgamma;
 
-        const QtVect3D outRgb = QtVect3D(X, B, Y);
+        // Old (incorrect one)?
+        // const float X = (Lgamma - Mgamma) / 2.0;
+        // const float Y = (Lgamma + Mgamma) / 2.0;
+        // const float B = Sgamma;
+
+        // https://github.com/facelessuser/coloraide/blob/72b86efd335528846a8decea66988389b9479b3c/coloraide/spaces/xyb.py#L28
+        // updated one
+        const mat3 lmstoxyb = mat3(0.5, 0.5, 0.0,
+                                   -0.5, 0.5, -1.0,
+                                   0.0, 0.0, 1.0);
+
+        const vec3 xybfromlms = lmstoxyb * vec3(Lgamma, Mgamma, Sgamma);
+
+        const QtVect3D outRgb = QtVect3D(xybfromlms.x, xybfromlms.z, xybfromlms.y);
         outs[gl_GlobalInvocationID.x] = outRgb;
         } break;
 

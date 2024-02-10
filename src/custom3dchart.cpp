@@ -1202,6 +1202,21 @@ void Custom3dChart::paintGL()
 
     const QRect calcRect(0, 0, width() * d->upscaler, height() * d->upscaler);
 
+    // axis label stuffs
+    // pai.setPen(Qt::lightGray);
+    // pai.setBrush(QColor(0, 0, 0, 160));
+    // pai.setFont(d->m_labelFont);
+
+    // pai.drawText(
+    //     projected(QVector3D(0.0f, 1.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+    //     "y");
+    // pai.drawText(
+    //     projected(QVector3D(1.0f, 0.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+    //     "x");
+    // pai.drawText(
+    //     projected(QVector3D(0.0f, 0.0f, 1.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
+    //     "Y");
+
     if (d->showLabel) {
         if (d->accFpsIdx >= d->accumulatedFps.size()) {
             d->accFpsIdx = 0;
@@ -2103,7 +2118,7 @@ void Custom3dChart::cycleModes(const bool &changeTarget)
         break;
     case 13:
         d->modeString = QString("XYB - D65");
-        d->resetTargetOrigin = QVector3D{0.0f, 0.25f, 0.5f};
+        d->resetTargetOrigin = QVector3D{0.0f, 0.0f, 0.5f};
         break;
     case 14:
         d->modeString = QString("ITU.BT-601 Y'CbCr");

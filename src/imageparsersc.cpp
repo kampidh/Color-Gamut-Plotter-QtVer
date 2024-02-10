@@ -342,7 +342,7 @@ void ImageParserSC::calculateFromRaw()
 
     // TODO: check transfer function as well
     // const bool needTransform = (d->imgtosrgb && !d->m_isSrgb);
-    const bool needTransform = true;
+    const bool needTransform = d->imgtosrgb ? true : false;
 
     std::function<QPair<QByteArray, QByteArray>(const QByteArray)> convertChunk = [&](const QByteArray input) {
         QByteArray trimXyz;
