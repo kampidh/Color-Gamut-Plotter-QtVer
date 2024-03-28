@@ -447,6 +447,9 @@ QPointF projected(const QVector3D &pos, const QMatrix4x4 &mat, const QSizeF &scr
 {
     const QVector4D pospos(pos.x(), pos.y(), pos.z(), 1.0f);
     const QVector4D abspospos = mat * pospos;
+    if (abspospos.w() < 0.0f) {
+        return QPointF();
+    }
     const QVector2D scrpospos(((abspospos.x() / abspospos.w()) + 1.0f) / 2.0f,
                               1.0f - (((abspospos.y() / abspospos.w()) + 1.0f) / 2.0f));
     const QPointF pointpospos(scrpospos.x() * scrSize.width(), scrpospos.y() * scrSize.height());

@@ -1218,7 +1218,7 @@ void Custom3dChart::paintGL()
         pai.drawText(
             projected(QVector3D(0.0f, 1.0f, 0.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
             d->yAxis);
-        if (d->pState.pitchAngle > -90.0f && d->pState.pitchAngle < 90.0f) {
+        if ((d->pState.pitchAngle > -90.0f && d->pState.pitchAngle < 90.0f) || !d->pState.useOrtho) {
             pai.drawText(
                 projected(QVector3D(0.0f, 0.0f, 1.0f), totalMatrix, QSizeF(width() * d->upscaler, height() * d->upscaler)),
                 d->zAxis);
