@@ -3,6 +3,7 @@
 #include <jxl/color_encoding.h>
 #include <jxl/encode_cxx.h>
 #include <jxl/resizable_parallel_runner_cxx.h>
+#include <jxl/version.h>
 
 #include <QDebug>
 #include <QFile>
@@ -166,6 +167,9 @@ bool JxlWriter::convert(QImage *img, const QString &filename, const int encEffor
         const int effort = [&]() {
             const quint64 imgPxSize = bounds.width() * bounds.height();
             if (encEffort > 0) return std::min(std::max(encEffort, 1), 9);
+#if JPEGXL_NUMERIC_VERSION > JPEGXL_COMPUTE_NUMERIC_VERSION(0, 10, 0)
+            return 7;
+#endif
             if (imgPxSize > 5000000) {
                 return 1;
             }
