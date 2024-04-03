@@ -25,7 +25,7 @@ QVector<QVector2D> Blackbody_Locus = []() {
     QVector<QVector2D> tempLocus;
 
     for (int i = 1700; i <= 25000; i += 50) {
-        const double temp = static_cast<float>(i);
+        const double temp = static_cast<double>(i);
         double x;
         double y;
 
@@ -52,7 +52,7 @@ QVector<QVector2D> Daylight_Locus = []() {
     QVector<QVector2D> tempLocus;
 
     for (int i = 4000; i <= 10000; i += 50) {
-        const double temp = static_cast<float>(i);
+        const double temp = static_cast<double>(i);
         double x;
         double y;
 
